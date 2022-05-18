@@ -104,7 +104,7 @@ network.
 
 # Design
 
-The proposed design is named after [Cesium](https://en.wikipedia.org/wiki/Caesium), the element most commonly used in
+The proposed design is named after [Cesium](https://en.wikipedia.org/wiki/Caesium), the stage most commonly used in
 atomic clocks. It focuses on simplicity by restricting:
 
 1. The attributes of the time-series data that can be stored.
@@ -233,21 +233,23 @@ example).
 
 Optimizing IO is an essential factor in building data intensive distributed systems. Running network and disk IO
 concurrently can lead to significant performance improvements for large data sets. Cesium aims to provide simple
-streaming
-interfaces that lend themselves to concurrent access. Cesium is built in what I'm calling a 'pipe' based model as it
-bears
-a resemblance to Unix pipes.
+streaming interfaces that lend themselves to concurrent access. Cesium is built in what I'm calling a 'pipe' based
+model as it bears a resemblance to Unix pipes.
 
 Core vocabulary for the following technical specification:
 
-**Element**: An interface that receives samples from one or more streams, does some operation on those samples, and
+**Stage**: An interface that receives samples from one or more streams, does some operation on those samples, and
 pipes the results to one or more output streams. In a [Sawzall](https://research.google/pubs/pub61/) style processing
-engine, an element would be comparable to an aggregator.
+engine, an stage would be comparable to an aggregator.
 
-**Pipe**: A pipe is an ordered sequence of elements, where the output stream(s) of each element is the input stream(s)
-for the next element. In Cesium's case, the ends of the pipe are the caller and disk reader respectively (the order
-reverses
-for different query variants).
+**Individual Stage** - An stage that is involved in serving only one request.
+
+**Shared Stage** - An stage that is involved in serving multiple requests (i.e. several input streams from different
+processes)
+
+**Pipe**: A pipe is an ordered sequence of stages, where the output stream(s) of each stage is the input stream(s)
+for the next stage. In Cesium's case, the ends of the pipe are the caller and disk reader respectively (the order
+reverses for different query variants).
 
 **Assembly**: The processing of selecting and initializing segments for a particular pipe. Assembly is a process that
 typically parses a query, builds a plan, and assembles the pipe.
@@ -260,6 +262,14 @@ can parse context within the samples to order additional transformations/alterna
 **Query** - The process of writing a structured request for pipe assembly and execution. A query is often assembled
 using some sort of ORM styled method chaining API, packed into a serializable structure, and passed to a processing
 engine that can execute it.
+
+Cesium's query execution model involves a set of individual stages that perform high-level query specific tasks, 
+connected to low level batching, debouncing, queueing, and ultimately disk IO stages. 
+
+### Retrieve Operation
+
+### Create Operation
+
 
 ## Data Layout
 
