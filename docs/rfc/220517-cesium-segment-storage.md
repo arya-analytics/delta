@@ -200,15 +200,15 @@ Where `D` is the density of the channel in bytes, `S` is the sample rate in Hz, 
 represents
 the nth sample in the segment (the first sample has index 0).
 
-A segment places no restrictions on the amount of samples it can store. This has important implications for both 
-durability and write throughput. Larger segments are less durable (written less frequently) but can achieve a higher 
+A segment places no restrictions on the amount of samples it can store. This has important implications for both
+durability and write throughput. Larger segments are less durable (written less frequently) but can achieve a higher
 throughput for both reads and writes, as segment data is written contiguously on disk. See [Data Layout](#data-layout)
 and [Providing Elastic Throughput](#providing-elastic-throughput) for more details.
 
 ## Handling Arbitrary Data Types
 
-Cesium places no restrictions on the data types can be stored, and instead represents a type using a **density**. 
-This is atypical for a time-series database, but provides flexibility for the caller to define custom data types such 
+Cesium places no restrictions on the data types can be stored, and instead represents a type using a **density**.
+This is atypical for a time-series database, but provides flexibility for the caller to define custom data types such
 as images, audio, etc. Creating a custom data type is as simple as defining a constant:
 
 ```go
@@ -217,17 +217,49 @@ const TenByTenImage cesium.DataType = 10 * 10 * 3
 
 // Create a new channel that accepts samples of type TenByTenImage.
 cesium.NewCreateChannel().
-   WithRate(100 * cesium.Hz).
-   WithType(TenByTenImage).
-   Exec(ctx)
+WithRate(100 * cesium.Hz).
+WithType(TenByTenImage).
+Exec(ctx)
 ```
 
-It's important to note that Cesium does not plan to validate the data type. It's the caller's responsibility to ensure that partial
-samples are not added to a segment. This is mainly for simplicity and separation of concern, as the caller typically 
+It's important to note that Cesium does not plan to validate the data type. It's the caller's responsibility to ensure
+that partial
+samples are not added to a segment. This is mainly for simplicity and separation of concern, as the caller typically
 has more information about the data being written than the storage engine itself does. This decision is definitely
-not hard and fast, as adding simple validation is relatively easy (we can assert `len(data) % DataType == 0` for example).
+not hard and fast, as adding simple validation is relatively easy (we can assert `len(data) % DataType == 0` for
+example).
 
-## Designing for Streams
+## Designing for Streaming and Iteration
+
+Optimizing IO is an essential factor in building data intensive distributed systems. Running network and disk IO
+concurrently can lead to significant performance improvements for large data sets. Cesium aims to provide simple
+streaming
+interfaces that lend themselves to concurrent access. Cesium is built in what I'm calling a 'pipe' based model as it
+bears
+a resemblance to Unix pipes.
+
+Core vocabulary for the following technical specification:
+
+**Element**: An interface that receives samples from one or more streams, does some operation on those samples, and
+pipes the results to one or more output streams. In a [Sawzall](https://research.google/pubs/pub61/) style processing
+engine, an element would be comparable to an aggregator.
+
+**Pipe**: A pipe is an ordered sequence of elements, where the output stream(s) of each element is the input stream(s)
+for the next element. In Cesium's case, the ends of the pipe are the caller and disk reader respectively (the order
+reverses
+for different query variants).
+
+**Assembly**: The processing of selecting and initializing segments for a particular pipe. Assembly is a process that
+typically parses a query, builds a plan, and assembles the pipe.
+
+**Execution**: The transfer/processing of samples from one end of the pipe to the other i.e. the streaming process.
+Often times, the Assembly process doesn't provide enough information to fully execute the query, so the execution
+process
+can parse context within the samples to order additional transformations/alternate routing.
+
+**Query** - The process of writing a structured request for pipe assembly and execution. A query is often assembled
+using some sort of ORM styled method chaining API, packed into a serializable structure, and passed to a processing
+engine that can execute it.
 
 ## Data Layout
 
