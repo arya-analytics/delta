@@ -231,6 +231,22 @@ example).
 
 ## Extending an Existing Key-Value Store
 
+Cesium's data can be separated into two categories: **metadata** and **segment data**. Metadata is context that can be 
+used to fulfill a particular request for segment data. Segment data is the actual time-series samples to be stored, retrieved,
+or removed from disk.
+
+Instead of writing a storage engine that can handle both metadata and segment data, Cesium proposes an alternative 
+architecture that *extends* an existing key-value store. This store handles all metadata, and Cesium uses to index the 
+location of Segments on disk. 
+
+This approach drastically simplifies Cesium's implementation, allowing it to make use of well-written iteration APIs
+to execute queries in an efficient manner. Although the actual key-value store used is of relative unimportance, I 
+chose CockroachDB's [Pebble](https://github.com/cockroachdb/pebble) as it provides a RocksDB compatible API with
+well written prefix iteration utilities (very useful for range based lookups).
+
+There are a number of alternatives such as Dgraph's [Badger](https://github.com/dgraph-io/badger). I haven't done any
+significant research into the pros and cons of each, as the performance across most of these stores seems comparable. 
+
 ## Designing for Streaming and Iteration
 
 Optimizing IO is an essential factor in building data intensive distributed systems. Running network and disk IO
@@ -351,7 +367,12 @@ with the retrieve query pipe.
 <h6 align="middle">Combined Cesium Pipe Architecture</h6>
 </p>
 
+Future iterations may involve inserting stages into the simplex stream between the Operation and Interface stage
+to perform aggregations on the data before returning it to the caller.
+
 ## Data Layout + Operations
+
+
 
 ### Segment KV
 
