@@ -306,6 +306,11 @@ in the file. This maximizes sequential IO.
 concurrent access on different files. This stage also manages a set of locks on top of a file system to ensure multiple
 workers don't access the same file in parallel. This stage is also shared with the create query pipe.
 
+<p align="middle">
+<img src="images/220517-cesium-segment-storage/retrieve-pipe.png" width="50%">
+<h6 align="middle">Retrieve Query Pipe</h6>
+</p>
+
 ### Create Query Execution
 
 A query with the following syntax:
@@ -333,6 +338,18 @@ groups disk operations belonging to the same file, then groups them by channel, 
 
 **Stage 4** - Shared - Persist - Same behavior as for [Retrieve](#retrieve-query-execution). This stage is shared
 with the retrieve query pipe.
+
+<p align="middle">
+<img src="images/220517-cesium-segment-storage/create-pipe.png" width="50%">
+<h6 align="middle">Create Query Pipe</h6>
+</p>
+
+### Combined Pipe Architecture
+
+<p align="middle">
+<img src="images/220517-cesium-segment-storage/pipe.png" width="100%">
+<h6 align="middle">Combined Cesium Pipe Architecture</h6>
+</p>
 
 ## Data Layout + Operations
 
