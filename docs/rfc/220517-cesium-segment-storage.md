@@ -371,14 +371,23 @@ with the retrieve query pipe.
 Future iterations may involve inserting stages into the simplex stream between the Operation and Interface stage
 to perform aggregations on the data before returning it to the caller.
 
-## Data Layout + Operations
+# Data Layout + Operations
 
-When writing data to disk, cesium holds the following principle in mind: *sequential IO is better than random IO*.
+## First Principles
+
+When considering the organization of Segment data on disk, I decided to design around the following principles:
+
+1. Sequential IO is better than random IO. 
+2. Multi-value access is more important than single-value access.
+3. Data is largely incompressible (i.e. it meets the requirements for Kolmogorov Randomness).
+4. Time-order reads and writes form the overwhelming majority of operations.
+5. Performant operations on a single channel are more important than on multiple channels.
+
+## Columnar vs. Row Based
 
 At the lowest level, there are two ways to structure time-series data on disk: in rows vs. in columns. In rows, the
 first column is a timestamp for the sample, and subsequent columns are samples for a particular channel. The following
-table
-is a simple representation:
+table is a simple representation:
 
 | Timestamp | Channel 1 | Channel 2 | Channel 3 |
 |-----------|-----------|-----------|-----------|
@@ -415,6 +424,25 @@ When searching for the start of a time range, Cesium must jump from header to he
 timestamp. For larger files, this can be a costly operation. Instead, Cesium stores the segment header in key-value 
 storage along with its file and offset. When retrieving a set of segments, Cesium first does a kv lookup to find the
 the location on disk, then proceeds to read it from the file. 
+
+This structure also lends itself well to aggregation. We can calculate the average, minimum, maximum, std dev, etc.
+and store it as metadata in kv. When executing an aggregation across a large time range, Cesium avoids reading
+segments from disk, and instead just uses these pre-calculated aggregations.
+
+## File Allocation
+
+In order to prioritize single channel access, Cesium uses a file allocation scheme that attempts to minimize the channel
+cardinality of a file. This is done using a round-robin style algorithm. When allocating a segment to a file:
+
+1. Lookup the file for the most recently allocated segment for the channel.
+2. If the file has not reached a maximum threshold (arbitrarily set), allocate the segment to the file.
+3. If the file has reached a maximum threshold:
+   1. If Cesium hasn't reached a maximum number of file descriptors (again, arbitrarily set), allocate the segment to a new file.
+   2. If Cesium has reached a maximum number of file descriptors, allocate the segment to the smallest file.
+
+This process repeats for each segment written. Step 3.2 can most likely be optimized further using some weighted combination
+of the smallest file and the one with the lowest channel cardinality. This adds complexity, and I'm planning on waiting 
+until we have some well run benchmarks to determine if its necessary.
 
 ## Providing Elastic Throughput
 
