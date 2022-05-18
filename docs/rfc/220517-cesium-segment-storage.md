@@ -104,7 +104,7 @@ network.
 
 # Design
 
-The proposed design is named after [Cesium](https://en.wikipedia.org/wiki/Caesium), the stage most commonly used in
+The proposed design is named after [Cesium](https://en.wikipedia.org/wiki/Caesium), the element most commonly used in
 atomic clocks. It focuses on simplicity by restricting:
 
 1. The attributes of the time-series data that can be stored.
