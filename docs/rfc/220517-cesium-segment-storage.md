@@ -509,11 +509,22 @@ A segment merging algorithm could resemble the following:
 4. Rewrite the contents of the file using the new offsets.
 5. Persist the new segments to KV. 
 
-Segment merging is also useful in the case of low rate channels.
+Segment merging is also useful in the case of low rate channels. Channels with samples rates under 1Hz will write very
+small segments. This lends itself increased IO randomness during reads (Low data rates -> more channels -> smaller segments
+-> high channel cardinality -> frequent random access). By sorting and merging segments, we can reduce both the number of
+kv lookups and increase sequential IO.
 
-# Debouncing
+In addition to write amplification, segment merging is also complex. We go from a database that writes a data once and then
+leaves it to adding multiple updates and rewrites. Segment merging only occurs after a file is closed. Recent data (which 
+generally lives in open files) is generally accessed far more frequently than older data. Reads to recent data won't
+benefit from segment merging unless the file size is drastically reduced, which leads to large numbers of files.
+
+These consequences mean I'm deciding to leave segment merging out of the scope of this RFC's implementation. This is not
+to say it doesn't belong in subsequent iterations. 
 
 # Iteration
+
+
 
 # Deletes
 
