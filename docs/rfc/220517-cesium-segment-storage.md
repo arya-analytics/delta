@@ -371,13 +371,18 @@ with the retrieve query pipe.
 Future iterations may involve inserting stages into the simplex stream between the Operation and Interface stage
 to perform aggregations on the data before returning it to the caller.
 
+It's also relevant to note that Cesium uses a large number of goroutines for a single query. This is (kind of)
+intentional, as Cesium is optimized for high throughput on lower amounts of large queries.
+See [Channel Counts and Segment Merging](#channel-counts-and-segment-merging) for more information how number of open
+queries affects performance. 
+
 # Data Layout + Operations
 
 ## First Principles
 
 When considering the organization of Segment data on disk, I decided to design around the following principles:
 
-1. Sequential IO is better than random IO. 
+1. Sequential IO is better than random IO.
 2. Multi-value access is more important than single-value access.
 3. Data is largely incompressible (i.e. it meets the requirements for Kolmogorov Randomness).
 4. Time-order reads and writes form the overwhelming majority of operations.
@@ -421,9 +426,9 @@ An option is to include this metadata along with the segment:
 
 Adding this 'header' is the most intuitive way to represent the data, but has implications for retrieving it.
 When searching for the start of a time range, Cesium must jump from header to header until it finds a matching
-timestamp. For larger files, this can be a costly operation. Instead, Cesium stores the segment header in key-value 
+timestamp. For larger files, this can be a costly operation. Instead, Cesium stores the segment header in key-value
 storage along with its file and offset. When retrieving a set of segments, Cesium first does a kv lookup to find the
-the location on disk, then proceeds to read it from the file. 
+the location on disk, then proceeds to read it from the file.
 
 This structure also lends itself well to aggregation. We can calculate the average, minimum, maximum, std dev, etc.
 and store it as metadata in kv. When executing an aggregation across a large time range, Cesium avoids reading
@@ -437,37 +442,79 @@ cardinality of a file. This is done using a round-robin style algorithm. When al
 1. Lookup the file for the most recently allocated segment for the channel.
 2. If the file has not reached a maximum threshold (arbitrarily set), allocate the segment to the file.
 3. If the file has reached a maximum threshold:
-   1. If Cesium hasn't reached a maximum number of file descriptors (again, arbitrarily set), allocate the segment to a new file.
-   2. If Cesium has reached a maximum number of file descriptors, allocate the segment to the smallest file.
+    1. If Cesium hasn't reached a maximum number of file descriptors (again, arbitrarily set), allocate the segment to a
+       new file.
+    2. If Cesium has reached a maximum number of file descriptors, allocate the segment to the smallest file.
 
-This process repeats for each segment written. Step 3.2 can most likely be optimized further using some weighted combination
-of the smallest file and the one with the lowest channel cardinality. This adds complexity, and I'm planning on waiting 
+This process repeats for each segment written. Step 3.2 can most likely be optimized further using some weighted
+combination
+of the smallest file and the one with the lowest channel cardinality. This adds complexity, and I'm planning on waiting
 until we have some well run benchmarks to determine if its necessary.
 
 ## Providing Elastic Throughput
 
-OLTP databases are typically designed for high request throughput of small transactions. This means latency is an extremely
+OLTP databases are typically designed for high request throughput of small transactions. This means latency is an
+extremely
 important factor. Cesium follows a different pattern. In section [Segments](#segments), we placed no restriction on the
-size of the data slice for a Segment. This means, that at its lowest capacity, a Segment can hold a single sample. This
-results in performance slower than a standard key-value store (in terms of time-series related operations). However, a 
-single sample segment most likely represents a channel with a low data rate (i.e. a sample every 15 seconds or greater). 
-In this case, high performance doesn't really matter. Even if we execute writes with an extremely low throughput of 1 sample
-per second, we are still far below the threshold needed to satisfy the query. 
+size of the data slice for a Segment. This means that at its lowest capacity, a Segment holds only a single sample. This
+results in performance slower than a standard key-value store (in terms of time-series related operations). However, a
+single sample segment most likely represents a channel with a low data rate (i.e. a sample every 15 seconds or greater).
+In this case, high performance doesn't really matter. Even if we execute writes with an extremely low throughput of 1
+sample
+per second, we are still far below the threshold needed to satisfy the query.
 
-As we increase the data rate of a channel, we'll also likely increase the size of an individual Segment. Larger segments 
+As we increase the data rate of a channel, we'll also likely increase the size of an individual Segment. Larger segments
 mean a few things:
 
 1. Far less disk IO / sample.
 2. Much large contiguous runs of data for a single channel. This means a lot of fast, sequential IO.
 3. Less KV operations needed for metadata (this applies to both create and retrieve queries).
 
-These changes ultimately result in a much higher write throughput for channels with high data rates (up in the hundreds 
-of millions of samples per second for very large segments). This also means that cesium can ingest massive amounts of 
-data in migration scenarios. The absolute limit for a Segment is related to the maximum file size setting and
+These changes ultimately result in a much higher write throughput for channels with high data rates (up in the hundreds
+of millions of samples per second for very large segments). This also means that cesium can ingest massive amounts of
+data in migration scenarios. The absolute limit for a segment is related to the maximum file size setting and
 the amount of memory available to the database. However, a more practical limit relates to the maximum message size of
 a segment that needs to be sent over the network.
 
-This so called 'elasticity' means that the throughput for a channel increases with sample rate. By tuning 
+This so called 'elasticity' means that the throughput for a channel increases with sample rate. By tuning
 other knobs in the database (such as debounce queue flush rate, batch size, etc.) we can tune the so called 'curve' of
-this relationship to meet specific use cases (for example, a 1Hz DAQ that has 10000 channels
-vs a 1 MHz DAQ that has 10 channels). 
+this relationship to meet specific use cases (for example, a 1Hz DAQ that has 10000 channels vs a 1 MHz DAQ that has
+10 channels).
+
+# Channel Counts and Segment Merging
+
+A Delta node that acquires data is meant to be deployed in proximity to or on a data acquisition computer (DAQ). 
+This typically means that a single node will handle no more than ~5000 channels at once. As a result, Cesium's architecture
+is designed to handle a relatively small number of channels per database when compared to its time series alternatives 
+(e.g. timescaleDB, and influxDB).
+
+This is the main reason why Cesium allocates a large number of goroutines per query; the optimization lies in throughput 
+for a single query which can write to hundreds of channels as opposed to many queries that write to a small number of
+channels.
+
+Lower channel counts generally imply more sequential disk IO (as the channel cardinality for a file is lower). If the 
+maximum number of file descriptors is low, however, this effect is negligible. Because channels are time-ordered, it's
+typical to expect high cardinality in the input stream of a create query with a larger number of channels. With a low
+descriptor count, we end up adding lots of discontinuities in a channel's data.
+
+This naturally leads to the question of re-ordering and merging Segments after they are persisted to disk (ensuring the 
+DB is durable while still maximizing sequential IO). The downside here is that we end up with quite a bit of write 
+amplification. 
+
+A segment merging algorithm could resemble the following:
+
+1. Wait for a file to exceed its maximum size and be closed by the DB.
+2. Query all segments in the file from KV and sort them by channel key and then by order.
+3. Calculate new offsets for the position of each sorted segment. 
+4. Rewrite the contents of the file using the new offsets.
+5. Persist the new segments to KV. 
+
+Segment merging is also useful in the case of low rate channels.
+
+# Debouncing
+
+# Iteration
+
+# Deletes
+
+# Aggregation, Downsampling, and Rudimentary Transformations
