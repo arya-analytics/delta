@@ -180,32 +180,62 @@ of a channel's data. A segment stores the following information:
 
 ```go
 type Segment struct {
-    // Start stores a nanosecond precision timestamp of the first sample 
-    // in the segment.
-    Start int64
-    // Data stores a set of regular, contiguous, binary encoded samples.
-    Data []byte
+// Start stores a nanosecond precision timestamp of the first sample 
+// in the segment.
+Start int64
+// Data stores a set of regular, contiguous, binary encoded samples.
+Data []byte
 }
 ```
 
 Because samples are regularly spaced, we only need to store the start time of the segment. The timestamp of any sample
 can be calculated with the following equation:
 
-<img src="https://render.githubusercontent.com/render/math?math=t_{n} = t_{0} * \frac{n*D}{S}" height="30px" alt="latex eq">
+<p align="middle">
+<br>
+<img src="https://render.githubusercontent.com/render/math?math=t_{n} = t_{0} * \frac{n*D}{S}" height="30px" alt="latex eq" >
+</p> 
 
-Where `D` is the density of the channel in bytes and `S` is the sample rate in Hz.
+Where `D` is the density of the channel in bytes, `S` is the sample rate in Hz, and the independent variable `n`
+represents
+the nth sample in the segment (the first sample has index 0).
+
+A segment places no restrictions on the amount of samples it can store. This has important implications for both 
+durability and write throughput. Larger segments are less durable (written less frequently) but can achieve a higher 
+throughput for both reads and writes, as segment data is written contiguously on disk. See [Data Layout](#data-layout)
+and [Providing Elastic Throughput](#providing-elastic-throughput) for more details.
 
 ## Handling Arbitrary Data Types
 
-## Designing for Streams
+Cesium places no restrictions on the data types can be stored, and instead represents a type using a **density**. 
+This is atypical for a time-series database, but provides flexibility for the caller to define custom data types such 
+as images, audio, etc. Creating a custom data type is as simple as defining a constant:
 
-## Providing Elastic Throughput
+```go
+// TenByTenImage is a custom data type where each sample is 10 * 10 * 3 bytes in size.
+const TenByTenImage cesium.DataType = 10 * 10 * 3
+
+// Create a new channel that accepts samples of type TenByTenImage.
+cesium.NewCreateChannel().
+   WithRate(100 * cesium.Hz).
+   WithType(TenByTenImage).
+   Exec(ctx)
+```
+
+It's important to note that Cesium does not plan to validate the data type. It's the caller's responsibility to ensure that partial
+samples are not added to a segment. This is mainly for simplicity and separation of concern, as the caller typically 
+has more information about the data being written than the storage engine itself does. This decision is definitely
+not hard and fast, as adding simple validation is relatively easy (we can assert `len(data) % DataType == 0` for example).
+
+## Designing for Streams
 
 ## Data Layout
 
 ### Segment KV
 
 ### Segment Meta Data
+
+## Providing Elastic Throughput
 
 ## Batching
 
