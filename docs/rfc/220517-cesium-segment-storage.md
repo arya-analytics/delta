@@ -446,13 +446,28 @@ until we have some well run benchmarks to determine if its necessary.
 
 ## Providing Elastic Throughput
 
-## Batching
+OLTP databases are typically designed for high request throughput of small transactions. This means latency is an extremely
+important factor. Cesium follows a different pattern. In section [Segments](#segments), we placed no restriction on the
+size of the data slice for a Segment. This means, that at its lowest capacity, a Segment can hold a single sample. This
+results in performance slower than a standard key-value store (in terms of time-series related operations). However, a 
+single sample segment most likely represents a channel with a low data rate (i.e. a sample every 15 seconds or greater). 
+In this case, high performance doesn't really matter. Even if we execute writes with an extremely low throughput of 1 sample
+per second, we are still far below the threshold needed to satisfy the query. 
 
-## Debouncing
+As we increase the data rate of a channel, we'll also likely increase the size of an individual Segment. Larger segments 
+mean a few things:
 
-## Iteration
+1. Far less disk IO / sample.
+2. Much large contiguous runs of data for a single channel. This means a lot of fast, sequential IO.
+3. Less KV operations needed for metadata (this applies to both create and retrieve queries).
 
-## Deletes
+These changes ultimately result in a much higher write throughput for channels with high data rates (up in the hundreds 
+of millions of samples per second for very large segments). This also means that cesium can ingest massive amounts of 
+data in migration scenarios. The absolute limit for a Segment is related to the maximum file size setting and
+the amount of memory available to the database. However, a more practical limit relates to the maximum message size of
+a segment that needs to be sent over the network.
 
-## Aggregation, Downsampling, and Rudimentary Transformations
-
+This so called 'elasticity' means that the throughput for a channel increases with sample rate. By tuning 
+other knobs in the database (such as debounce queue flush rate, batch size, etc.) we can tune the so called 'curve' of
+this relationship to meet specific use cases (for example, a 1Hz DAQ that has 10000 channels
+vs a 1 MHz DAQ that has 10 channels). 
