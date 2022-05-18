@@ -21,4 +21,6 @@ that contributes towards meeting the requirements laid out in the [Delta specifi
 
 # Vocabulary
 
-**Node** - A machine in the cluster.
+**Node** - A machine in the cluster. \
+**Cluster** - A group of nodes that can communicate with each other.
+
