@@ -231,21 +231,22 @@ example).
 
 ## Extending an Existing Key-Value Store
 
-Cesium's data can be separated into two categories: **metadata** and **segment data**. Metadata is context that can be 
-used to fulfill a particular request for segment data. Segment data is the actual time-series samples to be stored, retrieved,
+Cesium's data can be separated into two categories: **metadata** and **segment data**. Metadata is context that can be
+used to fulfill a particular request for segment data. Segment data is the actual time-series samples to be stored,
+retrieved,
 or removed from disk.
 
-Instead of writing a storage engine that can handle both metadata and segment data, Cesium proposes an alternative 
-architecture that *extends* an existing key-value store. This store handles all metadata, and Cesium uses to index the 
-location of Segments on disk. 
+Instead of writing a storage engine that can handle both metadata and segment data, Cesium proposes an alternative
+architecture that *extends* an existing key-value store. This store handles all metadata, and Cesium uses to index the
+location of Segments on disk.
 
 This approach drastically simplifies Cesium's implementation, allowing it to make use of well-written iteration APIs
-to execute queries in an efficient manner. Although the actual key-value store used is of relative unimportance, I 
+to execute queries in an efficient manner. Although the actual key-value store used is of relative unimportance, I
 chose CockroachDB's [Pebble](https://github.com/cockroachdb/pebble) as it provides a RocksDB compatible API with
 well written prefix iteration utilities (very useful for range based lookups).
 
 There are a number of alternatives such as Dgraph's [Badger](https://github.com/dgraph-io/badger). I haven't done any
-significant research into the pros and cons of each, as the performance across most of these stores seems comparable. 
+significant research into the pros and cons of each, as the performance across most of these stores seems comparable.
 
 ## Designing for Streaming and Iteration
 
@@ -372,11 +373,48 @@ to perform aggregations on the data before returning it to the caller.
 
 ## Data Layout + Operations
 
+When writing data to disk, cesium holds the following principle in mind: *sequential IO is better than random IO*.
 
+At the lowest level, there are two ways to structure time-series data on disk: in rows vs. in columns. In rows, the
+first column is a timestamp for the sample, and subsequent columns are samples for a particular channel. The following
+table
+is a simple representation:
 
-### Segment KV
+| Timestamp | Channel 1 | Channel 2 | Channel 3 |
+|-----------|-----------|-----------|-----------|
+| 15:00:00  | 1         | 2         | 3         |
+| 15:00:01  | 4         | 5         | 6         |
+| 15:00:02  | 7         | 8         | 9         |
 
-### Segment Meta Data
+A row can be represented as a tuple of values: `(15:00:00, 1, 2, 3)`. Each row is serialized and saved to disk
+sequentially.
+This storage format is ideal for irregular samples where channels are queried in groups i.e. the caller requests
+data for Channels 1, 2, and 3 at the same time.
+
+Columnar storage, on the other hand, writes samples for an individual channel sequentially. This is ideal for Delta's
+use
+case, as the timestamps of regular samples can be compacted, and a caller often requests data for a small number of
+channels at once. The following represents the layout of a columnar segment on disk:
+
+| 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|
+
+This representation omits the following metadata:
+
+1. Defining the timestamp of the segment,
+2. The key of the channel, and
+3. The spacing between samples.
+
+An option is to include this metadata along with the segment:
+
+| Key 1 | 15:00:00 | 25Hz | 1   | 2   | 3   | 4   | 5   | 6   | 7   | 8   | 9   |
+|-------|----------|------|-----|-----|-----|-----|-----|-----|-----|-----|-----|
+
+Adding this 'header' is the most intuitive way to represent the data, but has implications for retrieving it.
+When searching for the start of a time range, Cesium must jump from header to header until it finds a matching
+timestamp. For larger files, this can be a costly operation. Instead, Cesium stores the segment header in key-value 
+storage along with its file and offset. When retrieving a set of segments, Cesium first does a kv lookup to find the
+the location on disk, then proceeds to read it from the file. 
 
 ## Providing Elastic Throughput
 
