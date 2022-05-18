@@ -161,10 +161,16 @@ by setting the byte density to 8:
 
 ```go 
 // Setting the byte density manually.
-cesiun.NewCreateChannel().WithRate(100 * cesium.Hz).WithType(8 * cesium.Byte).Exec(ctx)
+cesiun.NewCreateChannel().
+   WithRate(100 * cesium.Hz).
+   WithType(8 * cesium.Byte).
+   Exec(ctx)
 
 // Using a pre-defined type alias.
-cesium.NewCreateChannel().WithRate(100 * cesium.Hz).WithType(cesium.Float64).Exec(ctx)
+cesium.NewCreateChannel().
+   WithRate(100 * cesium.Hz).
+   WithType(cesium.Float64).
+   Exec(ctx)
 ```
 
 ### Segments
@@ -174,7 +180,8 @@ of a channel's data. A segment stores the following information:
 
 ```go
 type Segment struct {
-    // Start stores a nanosecond precision timestamp of the first sample in the segment.
+    // Start stores a nanosecond precision timestamp of the first sample 
+	// in the segment.
     Start int64
     // Data stores a set of regular, contiguous, binary encoded samples.
     Data []byte
