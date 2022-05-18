@@ -229,6 +229,8 @@ has more information about the data being written than the storage engine itself
 not hard and fast, as adding simple validation is relatively easy (we can assert `len(data) % DataType == 0` for
 example).
 
+## Extending an Existing Key-Value Store
+
 ## Designing for Streaming and Iteration
 
 Optimizing IO is an essential factor in building data intensive distributed systems. Running network and disk IO
@@ -263,15 +265,76 @@ can parse context within the samples to order additional transformations/alterna
 using some sort of ORM styled method chaining API, packed into a serializable structure, and passed to a processing
 engine that can execute it.
 
-Cesium's query execution model involves a set of individual stages that perform high-level query specific tasks, 
-connected to low level batching, debouncing, queueing, and ultimately disk IO stages. 
+**Operation**  - Cesium Specific - A set of instructions to perform on a particular location on the disk. This can be
+reading, writing, etc.
 
-### Retrieve Operation
+Cesium's query execution model involves a set of individual stages that perform high-level query specific tasks,
+connected to low level batching, debouncing, queueing, and ultimately disk IO stages.
 
-### Create Operation
+### Retrieve Query Execution
 
+A query with the following syntax:
 
-## Data Layout
+```go
+// res is a channel that returns read segments along with errors encountered 
+// during execution. err is an error encountered during query assembly.
+res, err := cesium.NewRetrieve().
+WhereChannels(1).
+WhereTimeRange(telem.NewTimeRange(0, 15)).
+Stream(ctx)
+```
+
+We're looking for all data from a channel with key 1 from time range 0 to 15 (the units are unimportant). We can use
+the following pipe:
+
+**Stage 0** - Individual - Assembly - Parses a query and does KV operations to generate a set of disk operations. Passes
+these operations to Stage 1.
+
+**Stage 1** - Individual - Interface - Queues a set of disk operations and waits for their execution to complete. Closes
+the response channel when all ops are completed.
+
+**Stage 2** - Shared - Debounced Queue - Debounces disk operations from an input stream and flushes them to the next
+stage after either reaching a pre-configured maximum batch size or a ticker with a pre-configured interval has elapsed.
+This is used to modulate disk IO and improve the quality of batching in the next stage.
+
+**Stage 3** - Shared - Batcher - Receives a set of disk operations and batches them into more efficient groups. This
+stage first groups together disk operations that are related to the same file, and then sorts the operations by the
+offset
+in the file. This maximizes sequential IO.
+
+**Stage 4** - Shared - Persist - Receives a set of disk operations and distributes them over a set of workers to perform
+concurrent access on different files. This stage also manages a set of locks on top of a file system to ensure multiple
+workers don't access the same file in parallel. This stage is also shared with the create query pipe.
+
+### Create Query Execution
+
+A query with the following syntax:
+
+```go
+// req is a channel that sends segments for persistence to disk.
+// res is a channel that returns any errors encountered during execution.
+// err is an error encountered during query assembly.
+req, res, err := cesium.NewCreate().WhereChannels(1).Stream(ctx)
+```
+
+We're writing a stream of sequential segments for a channel with key 1 to disk. We can use the following pipe:
+
+**Stage 0** - Individual - Assembly - Acquires a lock on the channel and does KV operations for metadata context. Forks
+stage 1.
+
+**Stage 1** - Interface/Parser - Receives a stream of create requests from the caller, validates them, does KV
+operations
+for metadata context, and passes a set of parsed operations to the next stage.
+
+**Stage 2** - Debounced Queue - Same behavior as for [Retrieve](#retrieve-query-execution).
+
+**Stage 3** - Shared - Batcher - Receives a set of disk operations and batches them into more efficient groups. It first
+groups disk operations belonging to the same file, then groups them by channel, and finally sorts them in time-order.
+
+**Stage 4** - Shared - Persist - Same behavior as for [Retrieve](#retrieve-query-execution). This stage is shared
+with the retrieve query pipe.
+
+## Data Layout + Operations
 
 ### Segment KV
 
