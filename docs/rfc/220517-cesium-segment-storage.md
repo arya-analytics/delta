@@ -181,7 +181,7 @@ of a channel's data. A segment stores the following information:
 ```go
 type Segment struct {
     // Start stores a nanosecond precision timestamp of the first sample 
-	// in the segment.
+    // in the segment.
     Start int64
     // Data stores a set of regular, contiguous, binary encoded samples.
     Data []byte
