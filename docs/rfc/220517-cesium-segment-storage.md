@@ -176,10 +176,10 @@ of a channel's data. A segment stores the following information:
 package main
 
 type Segment struct {
-// Start stores a nanosecond precision timestamp of the first sample in the segment.
-Start int64
-// Data stores a set of regular, contiguous, binary encoded samples.
-Data []byte
+    // Start stores a nanosecond precision timestamp of the first sample in the segment.
+    Start int64
+    // Data stores a set of regular, contiguous, binary encoded samples.
+    Data []byte
 }
 ```
 
