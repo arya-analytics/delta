@@ -173,8 +173,6 @@ The implications of these restrictions becomes apparent when designing  **segmen
 of a channel's data. A segment stores the following information:
 
 ```go
-package main
-
 type Segment struct {
     // Start stores a nanosecond precision timestamp of the first sample in the segment.
     Start int64
@@ -183,12 +181,12 @@ type Segment struct {
 }
 ```
 
-Because samples are regularly spaces, we only need to store the start time of the segment. The timestamp of any sample
+Because samples are regularly spaced, we only need to store the start time of the segment. The timestamp of any sample
 can be calculated with the following equation:
 
-$$t_{n} = t_{0} * \frac{n*D}{S}$$
+<img src="https://render.githubusercontent.com/render/math?math=t_{n} = t_{0} * \frac{n*D}{S}" height="30px" alt="latex eq">
 
-### Constant Sample Size
+Where `D` is the density of the channel in bytes and `S` is the sample rate in Hz.
 
 ## Handling Arbitrary Data Types
 
