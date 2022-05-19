@@ -53,7 +53,7 @@ unreachable.
 Aspens design consists of two gossip layers:
 
 1. Layer 1 - Uses a Susceptible-Infected (SI) model to spread cluster state in a fashion
-   resembling [Apache Cassandra(https://cassandra.apache.org/_/index.html)]. All nodes gossip their version of state at
+   resembling [Apache Cassandra](https://cassandra.apache.org/_/index.html)]. All nodes gossip their version of state at
    a regular interval. This is used to disseminate information about cluster membership and node health. This
    includes reporting information about failed or suspected nodes
 
@@ -259,16 +259,17 @@ package irrelivant
 type NodeID int16
 
 type KV interface {
-	// Set sets a key to a value. nodeID specifies the node that holds the lease on the key. If nodeID is 0, the lease
-	// is assigned to the host node.
+	// Set sets a key to a value. nodeID specifies the node that holds the lease on the key. 
+	// If nodeID is 0, the lease is assigned to the host node.
 	Set(key []byte, leaseholder NodeID, value []byte) error
 	// Rest of interface is the same as github.com/arya-analytics/x/kv.KV.
 }
 ```
 
-## Life of a Set
+## Life of a Set/Delete
 
-A kv set is processed by the database as follows
+A kv set is processed by the database as follows. It's important to note that deletes and sets are both propagated
+using the same steps.
 
 ### Step 1 - Forward Request to Leaseholder
 
@@ -381,12 +382,13 @@ End of gossip.
 Aspen does not support remote get requests. If a key cannot be found in underlying KV, returns a ErrNotFound error. This
 decision was made for two reasons:
 
-1. We maintain a consistent view of the state even when other cluster members cannot be reached.
+1. We maintain a consistent view of storage even when other cluster members cannot be reached.
 2. We can simply extend the kv interface of an existing store, providing functionality such as prefix iteration.
 
-Providing consistent remote reads is an undertaking for future iterations.
+This means that the only difference between a read to a local KV store is that we check for deletion tombstones before
+returning a value.
 
-This means that the life of a get is almost the same, except we check for deletion tombstones before returning a value.
+Providing consistent remote reads is an undertaking for future iterations.
 
 ### Merging Updates
 
