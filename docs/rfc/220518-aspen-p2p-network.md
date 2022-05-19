@@ -53,7 +53,7 @@ unreachable.
 Aspens design consists of two gossip layers:
 
 1. Layer 1 - Uses a Susceptible-Infected (SI) model to spread cluster state in a fashion
-   resembling [Apache Cassandra](https://cassandra.apache.org/_/index.html)]. All nodes gossip their version of state at
+   resembling [Apache Cassandra](https://cassandra.apache.org/_/index.html). All nodes gossip their version of state at
    a regular interval. This is used to disseminate information about cluster membership and node health. This
    includes reporting information about failed or suspected nodes
 
@@ -70,8 +70,7 @@ By using a gossip based network, Delta can provide a cluster membership system t
 
 This cluster membership and state gossip is considered Layer 1. Layer 1 is implemented using a Susceptible-Infected (SI)
 model. In an SI gossip model, nodes never stop spreading a message. This means quite a bit of network message
-amplification
-but is useful when it comes to failure detection and membership.
+amplification but is useful when it comes to failure detection and membership.
 
 ### Cluster State Data Structure
 
@@ -238,6 +237,12 @@ their state.
 
 The first node to join the cluster is provided with no peer addresses. It will automatically assign itself an ID of 1.
 
+### Implications of Algorithm
+
+Using a quorum based approach to ID assignment means that we get a strong guarantee that a node will be assigned a
+unique identifier. It also means that a cluster with less than half of its nodes available will not be able to add new members.
+This is an important property to consider in scenarios with extremely dynamic cluster membership.
+
 ## Key-Value Store
 
 Aspen implements a leased driven key-value store on top of layer 1. The gossip protocol that disseminates kv updates
@@ -400,7 +405,7 @@ Providing consistent remote reads is an undertaking for future iterations.
 
 ## Failure Detection
 
-### Layer 1 Piggyback
+## Failure Recovery
 
 ## Cluster Topology and Routing
 
