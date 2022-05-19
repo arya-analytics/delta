@@ -511,7 +511,8 @@ small segments. This lends itself increased IO randomness during reads (Low data
 -> high channel cardinality -> frequent random access). By sorting and merging segments, we can reduce both the number of
 kv lookups and increase sequential IO.
 
-In addition to write amplification, segment merging is also complex. We go from a database that writes data once to adding multiple updates and rewrites. Segment merging only occurs after a file is closed. Recent data (which 
+In addition to write amplification, segment merging is also complex. We go from a database that writes data once to adding
+multiple updates and rewrites. Segment merging only occurs after a file is closed. Recent data (which
 generally lives in open files) is typically accessed more frequently than older data. Reads to recent data won't
 benefit from segment merging unless the file size is drastically reduced, which leads to large numbers of files.
 
@@ -520,8 +521,27 @@ to say it doesn't belong in subsequent iterations.
 
 # Iteration
 
+Cesium will most likely serve queries with results well in the hundreds of gigabytes. This data must be read from disk,
+processed, and sent over the network. It's reasonable to assume that the client won't expect the entire data set to be
+returned before beginning to process it. This is a great opportunity to provide iteration utilities that allow a client
+to 'seek' through a channel's data.
 
+This is particularly useful when the client wants to distribute processing across multiple threads or machines. By providing
+some sort of server side iterator, we can provide a concurrency safe mechanism for iterating over a channel's data.
+
+This is also useful if a client doesn't have enough memory to hold an entire data set. Instead, they can iterate over the
+segments in a channel, sending the transformed results back to the server. That way, a client only needs to maintain a
+small section of the channel's data in memory at once..
 
 # Deletes
+
+Cesium's current implementation does not serve delete queries, although this is undoubtedly an important feature for
+the future. Like reads and writes, deletions are optimized for large ranges of data. Cesium employs tombstones
+to mark data for removal. Retrieve queries will no longer consider these segments as valid, and will avoid them when returning
+results.
+
+A periodic garbage collection service will process tombstones and remove the data from disk. The exact interval or threshold
+for removing this data is yet to be determined. This will be affected by a pre-determined maximum file size setting. For
+larger file size limits, garbage collection will likely result in a considerable amount of write amplification.
 
 # Aggregation, Downsampling, and Rudimentary Transformations
