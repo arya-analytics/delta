@@ -10,9 +10,10 @@
 
 # Summary
 
-In this RFC I propose an architecture for a time-series storage engine that can serve as Delta's primary means of data
-persistence. This proposal places a heavy focus on interface as opposed to implementation details; a primary goal is
-to define a sustainable interface that can serve as a clear boundary between Delta and an underlying storage engine.
+In this RFC I propose an architecture for a time-series storage engine that can serve as Delta's primary means of
+time-series data persistence. This proposal places a heavy focus on interface as opposed to implementation details;
+a key goal is to define a sustainable interface that can serve as a clear boundary between Delta and an underlying
+storage engine.
 
 This design is by no means complete, and is intended to be a starting point for continuous iteration as Delta's demands
 evolve.
@@ -293,9 +294,9 @@ A query with the following syntax:
 // res is a channel that returns read segments along with errors encountered 
 // during execution. err is an error encountered during query assembly.
 res, err := cesium.NewRetrieve().
-                    WhereChannels(1).
-                    WhereTimeRange(telem.NewTimeRange(0, 15)).
-                    Stream(ctx)
+WhereChannels(1).
+WhereTimeRange(telem.NewTimeRange(0, 15)).
+Stream(ctx)
 ```
 
 We're looking for all data from a channel with key 1 from time range 0 to 15 (the units are unimportant). We can use
@@ -311,7 +312,8 @@ the response channel when all ops are completed.
 stage after either reaching a pre-configured maximum batch size or a ticker with a pre-configured interval has elapsed.
 This is used to modulate disk IO and improve the quality of batching in the next stage.
 
-**Stage 3** - Shared - Batcher - Receives a set of disk operations and batches them into more efficient groups. Groups together disk operations that are related to the same file, and then sorts the operations by their
+**Stage 3** - Shared - Batcher - Receives a set of disk operations and batches them into more efficient groups. Groups
+together disk operations that are related to the same file, and then sorts the operations by their
 offset in the file. This maximizes sequential IO.
 
 **Stage 4** - Shared - Persist - Receives a set of disk operations and distributes them over a set of workers to perform
@@ -345,7 +347,7 @@ for metadata context, and passes a set of parsed operations to the next stage.
 
 **Stage 2** - Debounced Queue - Same behavior as for [Retrieve](#retrieve-query-execution).
 
-**Stage 3** - Shared - Batcher - Receives a set of disk operations and batches them into more efficient groups. 
+**Stage 3** - Shared - Batcher - Receives a set of disk operations and batches them into more efficient groups.
 Groups disk operations belonging to the same file, then groups them by channel, and finally sorts them in time-order.
 
 **Stage 4** - Shared - Persist - Same behavior as for [Retrieve](#retrieve-query-execution). This stage is shared
@@ -368,8 +370,9 @@ to perform aggregations on the data before returning it to the caller.
 
 It's also relevant to note that Cesium uses a large number of goroutines for a single query. This is (kind of)
 intentional, as Cesium is optimized for high throughput on fewer, large queries.
-See [Channel Counts and Segment Merging](#channel-counts-and-segment-merging) for more information how the number of open
-queries affects performance. 
+See [Channel Counts and Segment Merging](#channel-counts-and-segment-merging) for more information how the number of
+open
+queries affects performance.
 
 # Data Layout + Operations
 
@@ -478,23 +481,24 @@ this relationship to meet specific use cases (for example, a 1Hz DAQ that has 10
 
 # Channel Counts and Segment Merging
 
-A Delta node that acquires data is meant to be deployed in proximity to or on a data acquisition computer (DAQ). 
-This typically means that a single node will handle no more than ~5000 channels at once. As a result, Cesium's architecture
-is designed to handle a relatively small number of channels per database when compared to its time series alternatives 
+A Delta node that acquires data is meant to be deployed in proximity to or on a data acquisition computer (DAQ).
+This typically means that a single node will handle no more than ~5000 channels at once. As a result, Cesium's
+architecture
+is designed to handle a relatively small number of channels per database when compared to its time series alternatives
 (e.g. timescaleDB, and influxDB).
 
-This is the main reason why Cesium allocates a large number of goroutines per query; the optimization lies in throughput 
+This is the main reason why Cesium allocates a large number of goroutines per query; the optimization lies in throughput
 for a single query which can write to hundreds of channels as opposed to many queries that write to a small number of
 channels.
 
-Lower channel counts generally imply more sequential disk IO (as the channel cardinality for a file is lower). If the 
+Lower channel counts generally imply more sequential disk IO (as the channel cardinality for a file is lower). If the
 maximum number of file descriptors is low, however, this effect is negligible. Because channels are time-ordered, it's
 typical to expect high cardinality in the input stream of a create query with a larger number of channels. With a low
 descriptor count, we end up adding lots of discontinuities in a channel's data.
 
-This naturally leads to the question of re-ordering and merging Segments after they are persisted to disk (ensuring the 
-DB is durable while still maximizing sequential IO). The downside here is that we end up with quite a bit of write 
-amplification. 
+This naturally leads to the question of re-ordering and merging Segments after they are persisted to disk (ensuring the
+DB is durable while still maximizing sequential IO). The downside here is that we end up with quite a bit of write
+amplification.
 
 A segment merging algorithm could resemble the following:
 
@@ -502,46 +506,82 @@ A segment merging algorithm could resemble the following:
 2. Query all segments in the file from KV
 3. Group them by channel key.
 4. Sort the groups by time-order.
-5. Calculate new offsets for the position of each sorted segment. 
+5. Calculate new offsets for the position of each sorted segment.
 6. Rewrite the contents of the file using the new offsets.
-7. Persist the new segments to KV. 
+7. Persist the new segments to KV.
 
 Segment merging is also useful in the case of low rate channels. Channels with samples rates under 1Hz will write very
-small segments. This lends itself increased IO randomness during reads (Low data rates -> more channels -> smaller segments
--> high channel cardinality -> frequent random access). By sorting and merging segments, we can reduce both the number of
+small segments. This lends itself increased IO randomness during reads (Low data rates -> more channels -> smaller
+segments
+-> high channel cardinality -> frequent random access). By sorting and merging segments, we can reduce both the number
+of
 kv lookups and increase sequential IO.
 
-In addition to write amplification, segment merging is also complex. We go from a database that writes data once to adding
+In addition to write amplification, segment merging is also complex. We go from a database that writes data once to
+adding
 multiple updates and rewrites. Segment merging only occurs after a file is closed. Recent data (which
 generally lives in open files) is typically accessed more frequently than older data. Reads to recent data won't
 benefit from segment merging unless the file size is drastically reduced, which leads to large numbers of files.
 
 These consequences mean I'm deciding to leave segment merging out of the scope of this RFC's implementation. This is not
-to say it doesn't belong in subsequent iterations. 
+to say it doesn't belong in subsequent iterations.
 
 # Iteration
 
-Cesium will most likely serve queries with results well in the hundreds of gigabytes. This data must be read from disk,
+Cesium is designed to serve queries with results well in the hundreds of gigabytes. This data must be read from disk,
 processed, and sent over the network. It's reasonable to assume that the client won't expect the entire data set to be
 returned before beginning to process it. This is a great opportunity to provide iteration utilities that allow a client
 to 'seek' through a channel's data.
 
-This is particularly useful when the client wants to distribute processing across multiple threads or machines. By providing
+This is particularly useful when the client wants to distribute processing across multiple threads or machines. By
+providing
 some sort of server side iterator, we can provide a concurrency safe mechanism for iterating over a channel's data.
 
-This is also useful if a client doesn't have enough memory to hold an entire data set. Instead, they can iterate over the
+This is also useful if a client doesn't have enough memory to hold an entire data set. Instead, they can iterate over
+the
 segments in a channel, sending the transformed results back to the server. That way, a client only needs to maintain a
 small section of the channel's data in memory at once..
 
 # Deletes
 
-Cesium's current implementation does not serve delete queries, although this is undoubtedly an important feature for
-the future. Like reads and writes, deletions are optimized for large ranges of data. Cesium employs tombstones
-to mark data for removal. Retrieve queries will no longer consider these segments as valid, and will avoid them when returning
-results.
+Like reads and writes, deletions are optimized for large ranges of data. Cesium employs tombstones to mark data for
+removal. Retrieve queries will no longer consider these segments as valid, and will avoid them when returning results.
 
-A periodic garbage collection service will process tombstones and remove the data from disk. The exact interval or threshold
-for removing this data is yet to be determined. This will be affected by a pre-determined maximum file size setting. For
-larger file size limits, garbage collection will likely result in a considerable amount of write amplification.
+A periodic garbage collection service will process tombstones and remove the data from disk. The exact parameters
+for this removal process (i.e. interval, tombstone count threshold, etc.) are yet to be determined. File size limits
+will have an impact on these parameters, as larger files will result in more write amplification.
 
-# Aggregation, Downsampling, and Rudimentary Transformations
+# Aggregation and Transformation
+
+Whether to separate storage and compute within a database is an important design decision 
+(see [BigQuery](https://cloud.google.com/blog/products/bigquery/separation-of-storage-and-compute-in-bigquery)). This 
+division typically comes in the form of a network partition where one server is responsible for storage and another 
+computation, although I think it applies to embedded databases as well. By providing simple aggregations (sum, min, max, avg), 
+a database can make use of low level optimizations to improve performance. On the other hand, leaving 
+these out leads to a simpler implementation (which is beneficial for obvious reasons).
+
+To illustrate, let's say we have a channel that records data at 100 Hz, and we want to compute the 
+average across a time range. The simplest approach is to iterate over the entire data set, average it, and then do what
+we want with it. In this case, it's the caller's (i.e our) job to do the computation. Cesium does no transformations on
+data internally (separated of storage and compute).
+
+On the other hand, averaging a data set is a frequent task, and we can use a technique along the lines of an SQL 
+materialized view to pre-compute the average. There are two ways of doing this:
+
+1. The caller is responsible - Average every N samples and write them to a new, derived channel.
+        This allows us to support arbitrary aggregations at the cost of transferring responsibility
+        to the caller for keeping the average up to date. We also move complexity further up the call stack, reducing
+        our options for low level optimization.
+
+2. Cesium is responsible - Cesium averages every N samples in a segment on write (or shortly after) and
+        stores them in metadata. When the average is requested, we can avoid the overhead of reading the entire segment,
+        and can instead return the value from metadata.
+
+The second option enables low level optimization by persisting common aggregations to disk. The problem is that we've now 
+coupled storage and compute, increasing the interface footprint and overall complexity of the database. It's also 
+difficult for us to predict the common aggregations a user may request. We either need to provide an API
+for configuring aggregation policies (increasing the interface complexity), or write algorithms that analyze the patterns
+of our users (increasing the implementation complexity). 
+
+These tradeoffs mean I'm deciding to leave aggregation outside of Cesium's scope for now. As we learn more about 
+Cesium's use case, we can revisit this decision.
