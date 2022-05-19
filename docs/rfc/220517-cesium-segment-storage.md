@@ -8,27 +8,27 @@
 
 # Table of Contents
 
-  * [Summary](#summary)
+* [Summary](#summary)
     * [Vocabulary](#vocabulary)
-  * [Motivation](#motivation)
+* [Motivation](#motivation)
     * [Existing Solutions](#existing-solutions)
-      * [Key-Value Stores](#key-value-stores)
-      * [Time-Series Stores](#time-series-stores)
-      * [Distributed Key-Value Stores](#distributed-key-value-stores)
-  * [Design](#design)
+        * [Key-Value Stores](#key-value-stores)
+        * [Time-Series Stores](#time-series-stores)
+        * [Distributed Key-Value Stores](#distributed-key-value-stores)
+* [Design](#design)
     * [Restrictions on Time-Series](#restrictions-on-time-series)
-      * [Channels](#channels)
-      * [Segments](#segments)
+        * [Channels](#channels)
+        * [Segments](#segments)
     * [Handling Arbitrary Data Types](#handling-arbitrary-data-types)
     * [Extending an Existing Key-Value Store](#extending-an-existing-key-value-store)
     * [Streaming and Iteration](#streaming-and-iteration)
-      * [Retrieve Query Execution](#retrieve-query-execution)
-      * [Create Query Execution](#create-query-execution)
-      * [Combined Pipe Architecture](#combined-pipe-architecture)
-    * [Data Layout + Operations](#data-layout-operations)
-      * [First Principles](#first-principles)
-      * [Columnar vs. Row-Based](#columnar-vs-row-based)
-      * [File Allocation](#file-allocation)
+        * [Retrieve Query Execution](#retrieve-query-execution)
+        * [Create Query Execution](#create-query-execution)
+        * [Combined Pipe Architecture](#combined-pipe-architecture)
+    * [Data Layout + Operations](#data-layout-+-operations)
+        * [First Principles](#first-principles)
+        * [Columnar vs. Row-Based](#columnar-vs-row-based)
+        * [File Allocation](#file-allocation)
     * [Providing Elastic Throughput](#providing-elastic-throughput)
     * [Channel Counts and Segment Merging](#channel-counts-and-segment-merging)
     * [Iteration](#iteration)
@@ -38,8 +38,8 @@
 # Summary
 
 In this RFC I propose an architecture for a time-series storage engine that can serve as Delta's primary means of
-time-series data persistence. This proposal places a heavy focus on interface as opposed to implementation details;
-a key goal is to define a sustainable interface that can serve as a clear boundary between Delta and an underlying
+data persistence. This proposal places a heavy focus on interface as opposed to implementation details;
+a key goal is to define a sustainable API that can serve as a clear boundary between Delta and an underlying
 storage engine.
 
 This design is by no means complete, and is intended to be a starting point for continuous iteration as Delta's demands
@@ -58,6 +58,7 @@ float64 value) unless otherwise specified, whereas an irregular sample is assume
 timestamp.
 Write throughput can also be expressed in terms of a frequency (1Hz, 5Hz, 25 KHz, 1 MHz, etc.) \
 **DAQ** - Data Acquisition Computer.
+**Channel Cardinality** - The number of unique channel keys for a set of segments in a file.
 
 This RFC expands on these definitions by defining specific properties of a Channel, Segment, and Sample.
 These properties are omitted from the above definitions as they may fluctuate and affect storage engine implementation
@@ -68,7 +69,7 @@ details.
 The product pivot from [Arya Core](https://arya-analytics.atlassian.net/wiki/spaces/AA/pages/819257/00+-+Arya+Core) to
 [Delta](https://arya-analytics.atlassian.net/wiki/spaces/AA/pages/9601025/01+-+Delta) is the main driver behind this
 RFC.
-Moving from a 'database proxy' a single binary 'database' architecture means we must either:
+Moving from a 'database proxy' to a single binary 'database' style architecture means we must either:
 
 1. Find an existing embedded storage engine written in Go.
 2. Write a new storage engine tailored towards Delta's specific use case.
@@ -87,7 +88,8 @@ are [badger](https://github.com/dgraph-io/badger), [bolt](https://github.com/bol
 and [pebble](https://github.com/cockroachdb/pebble).
 
 These all use an LSM + WAL style architecture, which is a good fit for frequent reads and writes on small amounts
-of data. However, when it comes to high rate append only workloads, they do not scale as well as one might hope. Pebbles
+of data. However, when it comes to high rate append only workloads, they do not scale as well as one might hope.
+Pebbles'
 own
 [benchmarks](https://cockroachdb.github.io/pebble/) show a maximum write throughput of (approximately) 60,000 samples
 per second, far
@@ -111,8 +113,9 @@ and performance. `tstorage` doesn't take advantage of data regularity, and is mi
 
 ### Distributed Key-Value Stores
 
-Using a distributed key-value store is theoretically a great fit for Delta, as it meets requirements for both cluster
-wide metadata in addition to segmented telemetry.
+Using a distributed key-value store seems like a great fit as it meets requirements for both cluster wide metadata as
+well
+segmented telemetry.
 
 [etcd](https://etcd.io/) is the most popular choice in this category, and can be run in a pseudo-embedded mode using
 [embed](https://pkg.go.dev/go.etcd.io/etcd/embed). This package allows for embedded bootstrapping of a cluster.
@@ -139,19 +142,18 @@ atomic clocks. It focuses on simplicity by restricting:
    to support more complex patterns).
 
 Cesium expects certain queries to request 100+ GB of data, and uses a pipe based architecture to serve
-long-running queries as streams that return data to the caller as it is read and parsed from disk. This functionality
-is extended to provide support for client side iterators. This is ideal for maximizing IO throughput by allowing the
+long-running queries as streams that return data to the caller as it is read from disk. This functionality
+is further extended to provide support for client side iterators. Streaming queries are ideal for maximizing IO
+throughput by allowing the
 client to transform or transfer data over the network as more segments are read.
 
 ## Restrictions on Time-Series
 
 Delta is designed to work with data acquisition hardware, and as such, must be optimized for time-series data that
-arrives
-at predictable, high sample rates (25 Khz+). This is very different to the typical IOT use case that involves
-edge devices streaming low rate data at unpredictable intervals.
-
-This is also very different from a software infrastructure monitoring system that can frequently discard old data. Delta
-stores data that must be kept for long periods of time.
+arrives at predictable, high sample rates (25 KHz+). This is very different a typical IOT use case with edge devices
+streaming low rate data at unpredictable intervals. This is also different from an observability use case, where a
+system
+can frequently discard old data. This is not the case in Delta, as telemetry must be kept for extended periods of time.
 
 ### Channels
 
@@ -172,14 +174,12 @@ decide whether fluctuations in the sample rate are acceptable.
 
 This decision was made with the assumption that the precision of data recorded by a DAQ is high enough that the
 consumer doesn't really care about the exact timestamp of a particular sample. This assumption can be extended beyond
-the high rate hardware DAQ use case to IOT or infrastructure monitoring workloads. For example, a DevOps engineer wants
+the high rate hardware DAQ use case to IOT or infrastructure monitoring workloads. Let's say a DevOps engineer wants
 to monitor the number of requests to a particular API endpoint. The web server pushes this data to a Cesium backed
 monitoring service at intervals of 5 seconds +/- 1 second. Cesium would assume these values are written to the channel
 at even, five second intervals e.g. 0s, 5s, 10s, 15s as opposed to 0s, 6s, 9s, 15s, etc. The DevOps engineer probably
-doesn't care about the exact
-regularity of the data.
-
-Of course there are cases where precise spacing is critical. In this case, Cesium is probably not the best choice.
+doesn't care about the exact regularity of the data. oF course, there are times when measuring precise intervals is
+critical. In these cases, Cesium is probably not the best choice.
 
 A channel's **data type** must also be predefined. This is typical for a time-series database, but Cesium places no
 restrictions on the data types that can be stored. A **data type** in Cesium is essentially an alias for its **density**
@@ -233,7 +233,7 @@ and [Providing Elastic Throughput](#providing-elastic-throughput) for more detai
 
 ## Handling Arbitrary Data Types
 
-Cesium places no restrictions on the data types can be stored, and instead represents a type using a **density**.
+Cesium places no restrictions on data type, and instead represents a type using a **density**.
 This is atypical for a time-series database, but provides flexibility for the caller to define custom data types such
 as images, audio, etc. Creating a custom data type is as simple as defining a constant:
 
@@ -263,6 +263,8 @@ retrieved,
 or removed from disk.
 
 Instead of writing a storage engine that can handle both metadata and segment data, Cesium proposes an alternative
+architecture that *extends* an existing key-value store. This store handles all metadata, and Cesium uses it to index
+the
 location of Segments on disk.
 
 This approach drastically simplifies Cesium's implementation, allowing it to make use of well-written iteration APIs
@@ -271,7 +273,7 @@ chose CockroachDB's [Pebble](https://github.com/cockroachdb/pebble) as it provid
 well written prefix iteration utilities (very useful for range based lookups).
 
 There are a number of alternatives such as Dgraph's [Badger](https://github.com/dgraph-io/badger). I haven't done any
-significant research into the pros and cons of each, as the performance across most of these stores seems comparable.
+extensive research into the pros and cons of each, as the performance across most of these stores seems comparable.
 
 ## Streaming and Iteration
 
@@ -295,19 +297,18 @@ processes)
 for the next stage. In Cesium's case, the ends of the pipe are the caller and disk reader respectively (the order
 reverses for different query variants).
 
-**Assembly** - The processing of selecting and initializing segments for a particular pipe. Assembly is a process that
-typically parses a query, builds a plan, and assembles the pipe.
+**Assembly** - The processing of selecting and initializing segments for a particular pipe. Assembly typically involves
+parsing a query, building a plan, and then constructing the pipe.
 
 **Execution** - The transfer/processing of samples from one end of the pipe to the other i.e. the streaming process.
-Often times, the Assembly process doesn't provide enough information to fully execute the query, so the execution
-process
-can parse context within the samples to order additional transformations/alternate routing.
+Often times, the assembly process doesn't provide enough information to fully execute the query, so the execution
+process parses additional context within a sample to order additional transformations/alternative routing.
 
 **Query** - The process of writing a structured request for pipe assembly and execution. A query is often assembled
 using some sort of ORM styled method chaining API, packed into a serializable structure, and passed to a processing
 engine that can execute it.
 
-**Operation**  - Cesium Specific - A set of instructions to perform on a particular location on the disk. This can be
+**Operation**  - Cesium Specific - A set of instructions to perform on the disk. This can be
 reading, writing, etc.
 
 Cesium's query execution model involves a set of individual stages that perform high-level query specific tasks,
@@ -335,9 +336,9 @@ these operations to Stage 1.
 **Stage 1** - Individual - Interface - Queues a set of disk operations and waits for their execution to complete. Closes
 the response channel when all ops are completed.
 
-**Stage 2** - Shared - Debounced Queue - Debounces disk operations from an input stream and flushes them to the next
-stage after either reaching a pre-configured maximum batch size or a ticker with a pre-configured interval has elapsed.
-This is used to modulate disk IO and improve the quality of batching in the next stage.
+**Stage 2** - Shared - Debounced Queue - Receives disk operations from an input stream and flushes them to the next
+stage after either reaching a maximum batch size or a ticker with an interval has elapsed. This modulates disk
+IO and improves the quality of batching in the next stage.
 
 **Stage 3** - Shared - Batcher - Receives a set of disk operations and batches them into more efficient groups. Groups
 together disk operations that are related to the same file, and then sorts the operations by their
@@ -396,7 +397,7 @@ Future iterations may involve inserting stages into the simplex stream between t
 to perform aggregations on the data before returning it to the caller.
 
 It's also relevant to note that Cesium uses a large number of goroutines for a single query. This is (kind of)
-intentional, as Cesium is optimized for high throughput on fewer, large queries.
+intentional, as the database is optimized for high throughput on fewer, large queries.
 See [Channel Counts and Segment Merging](#channel-counts-and-segment-merging) for more information how the number of
 open
 queries affects performance.
@@ -433,16 +434,16 @@ data for Channels 1, 2, and 3 at the same time.
 Columnar storage, on the other hand, writes samples for an individual channel sequentially. This is ideal for Delta's
 use
 case, as the timestamps of regular samples can be compacted, and a caller often requests data for a small number of
-channels at once. The following represents the layout of a columnar segment on disk:
+channels at once. The following is a layout of a columnar segment on disk:
 
 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
 |---|---|---|---|---|---|---|---|---|
 
 This representation omits the following metadata:
 
-1. Defining the timestamp of the segment,
-2. The key of the channel, and
-3. The spacing between samples.
+1. Start timestamp of the segment
+2. Key of the channel
+3. Separation between samples (data rate)
 
 An option is to include this metadata along with the segment:
 
@@ -457,7 +458,7 @@ the location on disk, then proceeds to read it from the file.
 
 This structure also lends itself well to aggregation. We can calculate the average, minimum, maximum, std dev, etc.
 and store it as metadata in kv. When executing an aggregation across a large time range, Cesium avoids reading
-segments from disk, and instead just uses these pre-calculated aggregations.
+segments from disk, and instead just uses these pre-calculated values.
 
 ### File Allocation
 
@@ -469,24 +470,24 @@ cardinality of a file. This is done using a round-robin style algorithm. When al
 3. If the file has reached a maximum threshold:
     1. If Cesium hasn't reached a maximum number of file descriptors (again, arbitrarily set), allocate the segment to a
        new file.
-    2. If Cesium has reached a maximum number of file descriptors, allocate the segment to the smallest file.
+    2. Otherwise, allocate the segment to the smallest file.
 
-This process repeats for each segment written. Step 3.2 can most likely be optimized further using some weighted
-combination
-of the smallest file and the one with the lowest channel cardinality. This adds complexity, and I'm planning on waiting
-until we have some well run benchmarks to determine if its necessary.
+This process repeats for each segment written. Step 3.2 can be optimized further using some weighted
+combination of the smallest file and the one with the lowest channel cardinality. This adds complexity, and I'm
+planning on waiting until we have some well run benchmarks to determine if it's necessary.
 
 ## Providing Elastic Throughput
 
-OLTP databases are typically designed for high request throughput of small transactions. This means latency is an
-extremely
-important factor. Cesium follows a different pattern. In section [Segments](#segments), we placed no restriction on the
-size of the data slice for a Segment. This means that at its lowest capacity, a Segment holds only a single sample. This
-results in performance slower than a standard key-value store (in terms of time-series related operations). However, a
-single sample segment most likely represents a channel with a low data rate (i.e. a sample every 15 seconds or greater).
-In this case, high performance doesn't really matter. Even if we execute writes with an extremely low throughput of 1
-sample
-per second, we are still far below the threshold needed to satisfy the query.
+OLTP databases are designed for high request throughput of small transactions. This means latency is an
+extremely important factor. Cesium follows a different pattern. In section [Segments](#segments), we placed no
+restriction on the
+size of the data slice for a Segment. At its lowest capacity, a Segment holds only a single sample. When writing single
+sample segments, Cesium will perform worse than a standard key-value store (as we need to do writes to both KV and disk)
+.
+This is less of an issue than it seems. A single sample segment is most likely channel with a low data rate
+(i.e. a sample arrives every 15 seconds or greater). In this case, high performance doesn't really matter. Even if we
+execute writes with an extremely low throughput of 1 sample per second, we're still far below the threshold needed to
+satisfy the query.
 
 As we increase the data rate of a channel, we'll also likely increase the size of an individual Segment. Larger segments
 mean a few things:
@@ -498,21 +499,20 @@ mean a few things:
 These changes ultimately result in a much higher write throughput for channels with high data rates (up in the hundreds
 of millions of samples per second for very large segments). This also means that cesium can ingest massive amounts of
 data in migration scenarios. The absolute limit for a segment is related to the maximum file size setting and
-the amount of memory available to the database. However, a more practical limit relates to the maximum message size of
-a segment that needs to be sent over the network.
+the amount of memory available to the database. A more practical limit is defined by the maximum message size of
+a segment sent over the network (this is about 4 MB for GRPC).
 
-This so called 'elasticity' means that the throughput for a channel increases with sample rate. By adjusting
-other knobs in the database (such as debounce queue flush rate, batch size, etc.) we can tune the so called 'curve' of
+This so called 'elasticity' means that the throughput for a channel increases with its sample rate. By adjusting
+other knobs in the database (such as debounce queue flush rate, batch size, etc.) we can tune the 'curve' of
 this relationship to meet specific use cases (for example, a 1Hz DAQ that has 10000 channels vs a 1 MHz DAQ that has
 10 channels).
 
 # Channel Counts and Segment Merging
 
 A Delta node that acquires data is meant to be deployed in proximity to or on a data acquisition computer (DAQ).
-This typically means that a single node will handle no more than ~5000 channels at once. As a result, Cesium's
-architecture
-is designed to handle a relatively small number of channels per database when compared to its time series alternatives
-(e.g. timescaleDB, and influxDB).
+This typically means that a single node will handle no more than ~5000 channels at once. Cesium's architecture
+is designed with this in mind, and can handle a relatively small number of channels per database when compared to its 
+alternatives (e.g. [TimescaleDB](https://www.timescale.com/), and [InfluxDB](https://www.influxdata.com/)).
 
 This is the main reason why Cesium allocates a large number of goroutines per query; the optimization lies in throughput
 for a single query which can write to hundreds of channels as opposed to many queries that write to a small number of
@@ -523,9 +523,8 @@ maximum number of file descriptors is low, however, this effect is negligible. B
 typical to expect high cardinality in the input stream of a create query with a larger number of channels. With a low
 descriptor count, we end up adding lots of discontinuities in a channel's data.
 
-This naturally leads to the question of re-ordering and merging Segments after they are persisted to disk (ensuring the
-DB is durable while still maximizing sequential IO). The downside here is that we end up with quite a bit of write
-amplification.
+A potential solution is to re-order and merge Segments post-write (ensuring the DB is durable while still maximizing sequential IO). 
+The downside here is that we end up with quite a bit of write amplification.
 
 A segment merging algorithm could resemble the following:
 
@@ -538,20 +537,17 @@ A segment merging algorithm could resemble the following:
 7. Persist the new segments to KV.
 
 Segment merging is also useful in the case of low rate channels. Channels with samples rates under 1Hz will write very
-small segments. This lends itself increased IO randomness during reads (Low data rates -> more channels -> smaller
-segments
--> high channel cardinality -> frequent random access). By sorting and merging segments, we can reduce both the number
-of
-kv lookups and increase sequential IO.
+small segments. This results in increased IO randomness during reads (Low data rates -> more channels -> smaller
+segments -> high channel cardinality -> frequent random access). By sorting and merging segments, we can reduce both 
+the number of kv lookups and increase sequential IO.
 
-In addition to write amplification, segment merging is also complex. We go from a database that writes data once to
-adding
-multiple updates and rewrites. Segment merging only occurs after a file is closed. Recent data (which
-generally lives in open files) is typically accessed more frequently than older data. Reads to recent data won't
-benefit from segment merging unless the file size is drastically reduced, which leads to large numbers of files.
+Segment merging also adds complexity. We go from a database that writes data once to adding multiple updates and rewrites. 
+Segment merging only occurs after a file is closed. Recent data (which generally lives in open files) is typically accessed 
+more frequently than older data. Reads to recent data won't benefit from segment merging unless the file size is drastically 
+reduced. This leads to large numbers of files.
 
-These consequences mean I'm deciding to leave segment merging out of the scope of this RFC's implementation. This is not
-to say it doesn't belong in subsequent iterations.
+I'm deciding to leave segment merging out of the scope of this RFC's implementation. This is not to say it doesn't belong 
+in subsequent iterations.
 
 # Iteration
 
@@ -580,35 +576,38 @@ will have an impact on these parameters, as larger files will result in more wri
 
 # Aggregation and Transformation
 
-Whether to separate storage and compute within a database is an important design decision 
-(see [BigQuery](https://cloud.google.com/blog/products/bigquery/separation-of-storage-and-compute-in-bigquery)). This 
-division typically comes in the form of a network partition where one server is responsible for storage and another 
-computation, although I think it applies to embedded databases as well. By providing simple aggregations (sum, min, max, avg), 
-a database can make use of low level optimizations to improve performance. On the other hand, leaving 
+Whether to separate storage and compute within a database is an important design decision
+(see [BigQuery](https://cloud.google.com/blog/products/bigquery/separation-of-storage-and-compute-in-bigquery)). This
+division typically comes in the form of a network partition where one server is responsible for storage and another
+computation, although I think it applies to embedded databases as well. By providing simple aggregations (sum, min, max,
+avg),
+a database can make use of low level optimizations to improve performance. On the other hand, leaving
 these out leads to a simpler implementation (which is beneficial for obvious reasons).
 
-To illustrate, let's say we have a channel that records data at 100 Hz, and we want to compute the 
+To illustrate, let's say we have a channel that records data at 100 Hz, and we want to compute the
 average across a time range. The simplest approach is to iterate over the entire data set, average it, and then do what
 we want with it. In this case, it's the caller's (i.e our) job to do the computation. Cesium does no transformations on
 data internally (separated of storage and compute).
 
-On the other hand, averaging a data set is a frequent task, and we can use a technique along the lines of an SQL 
+On the other hand, averaging a data set is a frequent task, and we can use a technique along the lines of an SQL
 materialized view to pre-compute the average. There are two ways of doing this:
 
 1. The caller is responsible - Average every N samples and write them to a new, derived channel.
-        This allows us to support arbitrary aggregations at the cost of transferring responsibility
-        to the caller for keeping the average up to date. We also move complexity further up the call stack, reducing
-        our options for low level optimization.
+   This allows us to support arbitrary aggregations at the cost of transferring responsibility
+   to the caller for keeping the average up to date. We also move complexity further up the call stack, reducing
+   our options for low level optimization.
 
 2. Cesium is responsible - Cesium averages every N samples in a segment on write (or shortly after) and
-        stores them in metadata. When the average is requested, we can avoid the overhead of reading the entire segment,
-        and can instead return the value from metadata.
+   stores them in metadata. When the average is requested, we can avoid the overhead of reading the entire segment,
+   and can instead return the value from metadata.
 
-The second option enables low level optimization by persisting common aggregations to disk. The problem is that we've now 
-coupled storage and compute, increasing the interface footprint and overall complexity of the database. It's also 
+The second option enables low level optimization by persisting common aggregations to disk. The problem is that we've
+now
+coupled storage and compute, increasing the interface footprint and overall complexity of the database. It's also
 difficult for us to predict the common aggregations a user may request. We either need to provide an API
-for configuring aggregation policies (increasing the interface complexity), or write algorithms that analyze the patterns
-of our users (increasing the implementation complexity). 
+for configuring aggregation policies (increasing the interface complexity), or write algorithms that analyze the
+patterns
+of our users (increasing the implementation complexity).
 
-These tradeoffs mean I'm deciding to leave aggregation outside of Cesium's scope for now. As we learn more about 
+These tradeoffs mean I'm deciding to leave aggregation outside of Cesium's scope for now. As we learn more about
 Cesium's use case, we can revisit this decision.
