@@ -262,8 +262,7 @@ type KV interface {
 	// Set sets a key to a value. nodeID specifies the node that holds the lease on the key. If nodeID is 0, the lease
 	// is assigned to the host node.
 	Set(key []byte, leaseholder NodeID, value []byte) error
-	// Get returns the value for a key. If the key is not found, returns ErrNotFound.
-	Get(key []byte) (NodeID, []byte, error)
+	// Rest of interface is the same as github.com/arya-analytics/x/kv.KV.
 }
 ```
 
@@ -287,32 +286,32 @@ package irrelivant
 type UpdateState byte
 
 const (
-   // StateInfected means the node is actively gossiping the update to other nodes in the cluster.
-   StateInfected UpdateState = iota
-   // StateRecovered means the node is no longer gossiping the update. 
-   StateRecovered
+	// StateInfected means the node is actively gossiping the update to other nodes in the cluster.
+	StateInfected UpdateState = iota
+	// StateRecovered means the node is no longer gossiping the update. 
+	StateRecovered
 )
 
 type Operation byte
 
 const (
-   // OperationSet represents a kv set operation.
-   OperationSet Operation = iota
-   // OperationDelete represents a kv delete operation.
-   OperationDelete
+	// OperationSet represents a kv set operation.
+	OperationSet Operation = iota
+	// OperationDelete represents a kv delete operation.
+	OperationDelete
 )
 
 type Update struct {
-   // Key is the key for the key-value pair.
-   Key []byte
-   // Value is the value for the key-value pair.
-   Value []byte
-   // Leaseholder is the ID of the leaseholder node.
-   Leaseholder NodeID
-   // State is the SIR state of the update.
-   State UpdateState
-   // Version is incremented every time an existing key is updated.
-   Version int32
+	// Key is the key for the key-value pair.
+	Key []byte
+	// Value is the value for the key-value pair.
+	Value []byte
+	// Leaseholder is the ID of the leaseholder node.
+	Leaseholder NodeID
+	// State is the SIR state of the update.
+	State UpdateState
+	// Version is incremented every time an existing key is updated.
+	Version int32
 }
 
 type UpdatePropagationList map[interface{}]Update
@@ -343,8 +342,8 @@ type SyncMessage struct {
 
 #### Step B - Peer Processes Update and Response (Ack)
 
-After receiving a sync message, the peer node processes the updates by merging its own state based on the version of 
-each message. The node also persists the updates to state. The peer node then sends the following ack message back to 
+After receiving a sync message, the peer node processes the updates by merging its own state based on the version of
+each message. The node also persists the updates to state. The peer node then sends the following ack message back to
 the initiator:
 
 ```go
@@ -352,7 +351,7 @@ package irrelivant
 
 // Feedback is a struct representing an update that has already been processed by a node.
 type Feedback struct {
-	Key []byte
+	Key     []byte
 	Version int32
 }
 
@@ -367,9 +366,9 @@ type AckMessage struct {
 }
 ```
 
-#### Step C -  Initiator Processes Update
+#### Step C - Initiator Processes Update
 
-After receiving an ack message, the initiator node processes the updates in the same manner as step B. Then it processes 
+After receiving an ack message, the initiator node processes the updates in the same manner as step B. Then it processes
 each feedback entry in the following manner:
 
 1. Sets the state of the update with the matching key to StateRemoved based on a recovery probability `R`
@@ -378,6 +377,20 @@ each feedback entry in the following manner:
 End of gossip.
 
 ### Life of a Get
+
+Aspen does not support remote get requests. If a key cannot be found in underlying KV, returns a ErrNotFound error. This
+decision was made for two reasons:
+
+1. We maintain a consistent view of the state even when other cluster members cannot be reached.
+2. We can simply extend the kv interface of an existing store, providing functionality such as prefix iteration.
+
+Providing consistent remote reads is an undertaking for future iterations.
+
+This means that the life of a get is almost the same, except we check for deletion tombstones before returning a value.
+
+### Merging Updates
+
+### Garbage Collecting Tombstones
 
 ### Recovery Constant
 
