@@ -187,44 +187,51 @@ in the section. It will then close the conversation.
 The propagation rate of cluster state is tuned by the interval at which a node gossips. Higher propagation rates
 will result in heavier network traffic, so it's up to the application to determine the appropriate balance.
 
-## Joining a Cluster
+## Adding a Member
 
 Aspen employs a relatively complex process for joining a node to a cluster. This is due to a desire to identify nodes
 using a unique `int16` value. The ID of a node is propagated with almost every message. By using an `int16` vs. `UUID`,
-we can reduce overall network traffic by a significant amount. Node IDs are also used far and wide across the rest of 
-Delta, such as in the key for a channel `<NodeID><ChannelID>`. This results in a sample that is 40 percent smaller than 
+we can reduce overall network traffic by a significant amount. Node IDs are also used far and wide across the rest of
+Delta, such as in the key for a channel `<NodeID><ChannelID>`. This results in a sample that is 40 percent smaller than
 with a `UUID`.
 
-The downside of using `int16` id's for nodes is that we need to design a distributed counter. Fortunately, this is a 
+The downside of using `int16` id's for nodes is that we need to design a distributed counter. Fortunately, this is a
 solved problem. The join process is as follows:
 
 ### Step 1 - Request a Peer to Join
 
-When joining a new node to a cluster, the joining node (known as the **pledge**) receives a set of one or more peer addresses 
-of other nodes in the cluster. The pledge node will choose a peer at random and send a join request to it. If the peer
-acknowledges the request, the joining node will then wait for a second message assigning it an ID. If the peer rejects the 
-request or doesn't respond, it attempts to send the request to another peer. This cycle continues until a peer acknowledges
+When joining a new node to a cluster, the joining node (known as the **pledge**) receives a set of one or more peer
+addresses
+of other nodes in the cluster. The **pledge** node will choose a peer at random and send a join request to it. If the
+peer
+acknowledges the request, the joining node will then wait for a second message assigning it an ID. If the peer rejects
+the
+request or doesn't respond, it attempts to send the request to another peer. This cycle continues until a peer
+acknowledges
 the request or a preset threshold is reached.
 
-The peer that accepts the pledge join request is known as the **responsible**. This node is responsible for safely initiating
-the pledge.
+The peer that accepts the **pledge** join request is known as the **responsible**. This node is responsible for safely
+initiating
+the **pledge**.
 
 ### Step 2 - Propose an ID
 
-The **responsible** Node will begin the initiation process by finding the highest id of the nodes within its state.
+The **responsible** node will begin the initiation process by finding the highest id of the nodes within its state.
 It will then select a quorum (>50%) of its peers and send a proposed id with a value one higher. It will then wait
-for all peers to approve the proposed value (these peers are called **jurors**). A juror will approve the value if it 
-does not have a node in its state with the given ID. A **juror** tracks the results of all accepted proposals until the 
-state of the accepted **pledge** has been disseminated. The approval process is mutex protected..
+for all peers to approve the proposed value (these peers are called **jurors**). A juror will approve the value if it
+does not have a node in its state with the given ID. A **juror** tracks the results of all accepted proposals until the
+state of the accepted **pledge** has been disseminated. The approval process is serialized by a mutex.
 
-If any node rejects the proposed value, the **responsible** node will increment the proposed value and reissue the proposal. 
-This process continues until an ID is accepted. If the **responsible** node tries to contact an unresponsive peer, it will 
-reselect a quorum of peers and try again. Once an ID is selected, the **responsible** node will send it to the pledge.
+If any node rejects the id, the **responsible** node will reissue the proposal with an incremented value.
+This process continues until an ID is accepted. If the **responsible** node tries to contact an unresponsive peer, it
+will
+reselect a quorum of peers and try again. Once an ID is selected, the **responsible** node will send it to the **
+pledge**.
 
 ### Step 3 - Disseminate New Node
 
-Once the **pledge** receives an ID assignment from the **responsible** node, it will begin to gossip it's state to the 
-rest of the cluster. As information about the new node spreads, **jurors** will remove the ID proposal request from
+Once the **pledge** receives an ID assignment from the **responsible** node, it will begin to gossip its state to the
+rest of the cluster. As information about the new node spreads, **jurors** will remove processed approvals from
 their state.
 
 ### The First Node
@@ -233,7 +240,148 @@ The first node to join the cluster is provided with no peer addresses. It will a
 
 ## Key-Value Store
 
+Aspen implements a leased driven key-value store on top of layer 1. The gossip protocol that disseminates kv updates
+and tombstones is known as layer 2.
+
+### Vocabulary
+
+**Host** - The node that is responsible for serving the kv operation to the caller
+(i.e. the node where `Get` or `Set` is called). \
+**Leaseholder** - The only node that can accept writes for a particular key. \
+
+### Interface
+
+At the simplest level, the key-value store implements the following interface.
+
+```go
+package irrelivant
+
+type NodeID int16
+
+type KV interface {
+	// Set sets a key to a value. nodeID specifies the node that holds the lease on the key. If nodeID is 0, the lease
+	// is assigned to the host node.
+	Set(key []byte, leaseholder NodeID, value []byte) error
+	// Get returns the value for a key. If the key is not found, returns ErrNotFound.
+	Get(key []byte) (NodeID, []byte, error)
+}
+```
+
+## Life of a Set
+
+A kv set is processed by the database as follows
+
+### Step 1 - Forward Request to Leaseholder
+
+If the node ID is non-zero, perform a layer 1 lookup for the leaseholder's address. Forward the request to the
+leaseholder.
+If the node ID is zero, allocate the least to the host node.
+
+### Step 2 - Process the Forwarded Set
+
+Add the key-value pair to an update propagation list. This list has the following structure:
+
+```go
+package irrelivant
+
+type UpdateState byte
+
+const (
+   // StateInfected means the node is actively gossiping the update to other nodes in the cluster.
+   StateInfected UpdateState = iota
+   // StateRecovered means the node is no longer gossiping the update. 
+   StateRecovered
+)
+
+type Operation byte
+
+const (
+   // OperationSet represents a kv set operation.
+   OperationSet Operation = iota
+   // OperationDelete represents a kv delete operation.
+   OperationDelete
+)
+
+type Update struct {
+   // Key is the key for the key-value pair.
+   Key []byte
+   // Value is the value for the key-value pair.
+   Value []byte
+   // Leaseholder is the ID of the leaseholder node.
+   Leaseholder NodeID
+   // State is the SIR state of the update.
+   State UpdateState
+   // Version is incremented every time an existing key is updated.
+   Version int32
+}
+
+type UpdatePropagationList map[interface{}]Update
+```
+
+After adding the update to the propagation list, we persist the set to an underlying kv store, and send a durability
+acknowledgement to the host node.
+
+### Step 3 - Propagate the Update
+
+A node will initiate layer 2 gossip at a set interval (default is 1 second). The gossip process is as follows:
+
+#### Step A - Initiator Propagates Update (Sync)
+
+The initiating node selects a random peer from layer 1, and set
+
+1. Select a random peer from layer 1, and send a sync message:
+
+```go
+package irrelivant
+
+type SyncMessage struct {
+	// Updates contains a list of all updates in the nodes current state where:
+	// 1. Update.State == StateInfected
+	Updates UpdatePropagationList
+}
+```
+
+#### Step B - Peer Processes Update and Response (Ack)
+
+After receiving a sync message, the peer node processes the updates by merging its own state based on the version of 
+each message. The node also persists the updates to state. The peer node then sends the following ack message back to 
+the initiator:
+
+```go
+package irrelivant
+
+// Feedback is a struct representing an update that has already been processed by a node.
+type Feedback struct {
+	Key []byte
+	Version int32
+}
+
+type AckMessage struct {
+	// Updates contains a list of all updates in the nodes current state that:
+	//   1. Update.State == StateInfected
+	//   2. Are not already in the peer node's update list. 
+	//   3. Have a higher version than the peer node's update.
+	Updates UpdatePropagationList
+	// Feedback is a list of Feedback for the updates a node already has (versions must be identical). 
+	Feedback []Feedback
+}
+```
+
+#### Step C -  Initiator Processes Update
+
+After receiving an ack message, the initiator node processes the updates in the same manner as step B. Then it processes 
+each feedback entry in the following manner:
+
+1. Sets the state of the update with the matching key to StateRemoved based on a recovery probability `R`
+   and persists the change to KV.
+
+End of gossip.
+
+### Life of a Get
+
 ### Recovery Constant
+
+### Range Replication and Lease Transfer
 
 ## Failure Detection
 
