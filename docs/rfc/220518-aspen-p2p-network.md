@@ -28,7 +28,8 @@ the [Delta specification](https://arya-analytics.atlassian.net/wiki/spaces/AA/pa
 
 **Node** - A machine in the cluster. \
 **Cluster** - A group of nodes that can communicate with each other. \
-**Redline** - A threshold for a particular channel value. Most often represents a safety limit that triggers an action. \
+**Redline** - A threshold for a particular channel value. Most often represents a safety limit that triggers an
+action. \
 **Initiator** - A node that initiates gossip with another node. \
 **Peer** - A node that engages in gossip with an initiating node.
 
@@ -60,7 +61,7 @@ Aspens design consists of two gossip layers:
    consistent manner. After receiving a set operation, the node will gossip the key-value pair to all other nodes until
    a certain number of redundant conversations (i.e. the node already received the update) have occurred.
 
-## Membership and Cluster State Synchronization
+## Cluster State Synchronization
 
 Delta aims to provide dynamic cluster membership. This is more difficult to accomplish if each node is required to
 know about *all* other nodes in the cluster before being initialized. This is the approach taken
@@ -162,8 +163,8 @@ The peer node makes no updates during this period.
 #### Ack2 Message
 
 After receiving an ack message from the peer, the initiator updates its own state and responds with a final ack2
-message. The initiator compares the heartbeat of every node in the `AckMessage.NodeMap` with its on state. If the peer 
-sent a new node or a node with an older heartbeat, the initiator's will replace the node in its state with the node 
+message. The initiator compares the heartbeat of every node in the `AckMessage.NodeMap` with its on state. If the peer
+sent a new node or a node with an older heartbeat, the initiator's will replace the node in its state with the node
 from the peer. It will them compose a new message:
 
 ```go
@@ -175,6 +176,7 @@ type Ack2Message struct {
 	NodeMap NodeMap
 }
 ```
+
 #### Closing the Conversation
 
 After receiving the final ack2 message, the initiator will update its own state using the same policy as the peer
@@ -185,6 +187,21 @@ in the section. It will then close the conversation.
 The propagation rate of cluster state is tuned by the interval at which a node gossips. Higher propagation rates
 will result in heavier network traffic, so it's up to the application to determine the appropriate balance.
 
+## Joining a Cluster
+
+Aspen employs a relatively complex process for joining a node to a cluster. This is due to a desire to identify nodes
+using a unique `int16` value. The ID of a node is propagated with almost every message. By using an `int16` vs. `UUID`,
+we can reduce overall network traffic by a significant amount. Node IDs are also used far and wide across the rest of 
+Delta, such as in the key for a channel `<NodeID><ChannelID>`. This results in a sample that is 40 percent smaller than 
+with a `UUID`.
+
+The downside of using `int16` id's for nodes is that we need to design a distributed counter. Fortunately, this is a 
+solved problem.
+
+### Step 1 - Request to Join
+
+
+
 ## Key-Value Store
 
 ### Recovery Constant
@@ -192,8 +209,6 @@ will result in heavier network traffic, so it's up to the application to determi
 ## Failure Detection
 
 ### Layer 1 Piggyback
-
-## Node ID Assignment and Distributed Counting
 
 ## Cluster Topology and Routing
 
