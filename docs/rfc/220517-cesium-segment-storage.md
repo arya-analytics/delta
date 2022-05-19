@@ -8,6 +8,33 @@
 
 # Table of Contents
 
+  * [Summary](#summary)
+    * [Vocabulary](#vocabulary)
+  * [Motivation](#motivation)
+    * [Existing Solutions](#existing-solutions)
+      * [Key-Value Stores](#key-value-stores)
+      * [Time-Series Stores](#time-series-stores)
+      * [Distributed Key-Value Stores](#distributed-key-value-stores)
+  * [Design](#design)
+    * [Restrictions on Time-Series](#restrictions-on-time-series)
+      * [Channels](#channels)
+      * [Segments](#segments)
+    * [Handling Arbitrary Data Types](#handling-arbitrary-data-types)
+    * [Extending an Existing Key-Value Store](#extending-an-existing-key-value-store)
+    * [Streaming and Iteration](#streaming-and-iteration)
+      * [Retrieve Query Execution](#retrieve-query-execution)
+      * [Create Query Execution](#create-query-execution)
+      * [Combined Pipe Architecture](#combined-pipe-architecture)
+    * [Data Layout + Operations](#data-layout-operations)
+      * [First Principles](#first-principles)
+      * [Columnar vs. Row-Based](#columnar-vs-row-based)
+      * [File Allocation](#file-allocation)
+    * [Providing Elastic Throughput](#providing-elastic-throughput)
+    * [Channel Counts and Segment Merging](#channel-counts-and-segment-merging)
+    * [Iteration](#iteration)
+    * [Deletes](#deletes)
+    * [Aggregation and Transformation](#aggregation-and-transformation)
+
 # Summary
 
 In this RFC I propose an architecture for a time-series storage engine that can serve as Delta's primary means of
@@ -71,7 +98,7 @@ of values per second is reasonable for append only writes to an SSD.
 It's naive to think we can reach comparable performance to slamming random bytes into a disk, but it's not unreasonable
 to assume we can drastically improve on the speed of a key-value store for a time-series only workload.
 
-### Time-Series Specific Stores
+### Time-Series Stores
 
 The embedded time-series storage options available in Go are limited. The most popular I've found
 is [tstorage](https://github.com/nakabonne/tstorage), which is tailored towards irregular time-series data.
@@ -246,7 +273,7 @@ well written prefix iteration utilities (very useful for range based lookups).
 There are a number of alternatives such as Dgraph's [Badger](https://github.com/dgraph-io/badger). I haven't done any
 significant research into the pros and cons of each, as the performance across most of these stores seems comparable.
 
-## Designing for Streaming and Iteration
+## Streaming and Iteration
 
 Optimizing IO is an essential factor in building data intensive distributed systems. Running network and disk IO
 concurrently can lead to significant performance improvements for large data sets. Cesium aims to provide simple
@@ -374,9 +401,9 @@ See [Channel Counts and Segment Merging](#channel-counts-and-segment-merging) fo
 open
 queries affects performance.
 
-# Data Layout + Operations
+## Data Layout + Operations
 
-## First Principles
+### First Principles
 
 When considering the organization of Segment data on disk, I decided to design around the following principles:
 
@@ -386,9 +413,9 @@ When considering the organization of Segment data on disk, I decided to design a
 4. Time-ordered reads and writes form the overwhelming majority of operations.
 5. Performant operations on a single channel are more important than on multiple channels.
 
-## Columnar vs. Row Based
+### Columnar vs. Row-Based
 
-At the lowest level, there are two ways to structure time-series data on disk: in rows vs. in columns. In rows, the
+There are two main ways to structure time-series data on disk: in rows vs. in columns. In rows, the
 first column is a timestamp for the sample, and subsequent columns are samples for a particular channel. The following
 table is a simple representation:
 
@@ -432,7 +459,7 @@ This structure also lends itself well to aggregation. We can calculate the avera
 and store it as metadata in kv. When executing an aggregation across a large time range, Cesium avoids reading
 segments from disk, and instead just uses these pre-calculated aggregations.
 
-## File Allocation
+### File Allocation
 
 In order to prioritize single channel access, Cesium uses a file allocation scheme that attempts to minimize the channel
 cardinality of a file. This is done using a round-robin style algorithm. When allocating a segment to a file:
