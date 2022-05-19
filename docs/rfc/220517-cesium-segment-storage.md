@@ -91,7 +91,7 @@ These all use an LSM + WAL style architecture, which is a good fit for frequent 
 of data. However, when it comes to high rate append only workloads, they do not scale as well as one might hope.
 Pebbles'
 own
-[benchmarks](https://cockroachdb.github.io/pebble/) show a maximum write throughput of (approximately) 60,000 samples
+[benchmarks](https://cockroachdb.github.io/pebble/) show a maximum write throughput of (approximately) 170,000 samples
 per second, far
 below Arya Core's throughput of 6 million values per second. An elastic throughput in the range several hundreds of
 millions
