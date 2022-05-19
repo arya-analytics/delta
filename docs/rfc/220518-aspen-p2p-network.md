@@ -196,11 +196,40 @@ Delta, such as in the key for a channel `<NodeID><ChannelID>`. This results in a
 with a `UUID`.
 
 The downside of using `int16` id's for nodes is that we need to design a distributed counter. Fortunately, this is a 
-solved problem.
+solved problem. The join process is as follows:
 
-### Step 1 - Request to Join
+### Step 1 - Request a Peer to Join
 
+When joining a new node to a cluster, the joining node (known as the **pledge**) receives a set of one or more peer addresses 
+of other nodes in the cluster. The pledge node will choose a peer at random and send a join request to it. If the peer
+acknowledges the request, the joining node will then wait for a second message assigning it an ID. If the peer rejects the 
+request or doesn't respond, it attempts to send the request to another peer. This cycle continues until a peer acknowledges
+the request or a preset threshold is reached.
 
+The peer that accepts the pledge join request is known as the **responsible**. This node is responsible for safely initiating
+the pledge.
+
+### Step 2 - Propose an ID
+
+The **responsible** Node will begin the initiation process by finding the highest id of the nodes within its state.
+It will then select a quorum (>50%) of its peers and send a proposed id with a value one higher. It will then wait
+for all peers to approve the proposed value (these peers are called **jurors**). A juror will approve the value if it 
+does not have a node in its state with the given ID. A **juror** tracks the results of all accepted proposals until the 
+state of the accepted **pledge** has been disseminated. The approval process is mutex protected..
+
+If any node rejects the proposed value, the **responsible** node will increment the proposed value and reissue the proposal. 
+This process continues until an ID is accepted. If the **responsible** node tries to contact an unresponsive peer, it will 
+reselect a quorum of peers and try again. Once an ID is selected, the **responsible** node will send it to the pledge.
+
+### Step 3 - Disseminate New Node
+
+Once the **pledge** receives an ID assignment from the **responsible** node, it will begin to gossip it's state to the 
+rest of the cluster. As information about the new node spreads, **jurors** will remove the ID proposal request from
+their state.
+
+### The First Node
+
+The first node to join the cluster is provided with no peer addresses. It will automatically assign itself an ID of 1.
 
 ## Key-Value Store
 
