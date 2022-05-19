@@ -27,9 +27,9 @@ the [Delta specification](https://arya-analytics.atlassian.net/wiki/spaces/AA/pa
 # Vocabulary
 
 **Node** - A machine in the cluster. \
-**Cluster** - A group of nodes that can communicate with each other.
-**Redline** - A threshold for a particular channel value. Most often represents a safety limit that triggers an action.
-**Initiator** - A node that initiates gossip with another node.
+**Cluster** - A group of nodes that can communicate with each other. \
+**Redline** - A threshold for a particular channel value. Most often represents a safety limit that triggers an action. \
+**Initiator** - A node that initiates gossip with another node. \
 **Peer** - A node that engages in gossip with an initiating node.
 
 # Motivation
@@ -103,8 +103,8 @@ A node's Heartbeat tracks two values:
 package irrelivant
 
 type Heartbeat struct {
-	// Version is incremented every time the node gossips information about its state. This is used to merge differing
-	// versions of cluster state during gossip.
+	// Version is incremented every time the node gossips information about its state. This is 
+	//used to merge differing versions of cluster state during gossip.
 	Version uint32
 	// Generation is incremented every time the node is restarted. This is useful for bringing a node
 	// back up to speed after a long period of absence.
@@ -162,11 +162,9 @@ The peer node makes no updates during this period.
 #### Ack2 Message
 
 After receiving an ack message from the peer, the initiator updates its own state and responds with a final ack2
-message.
-The initiator compares the heartbeat of every node in the `AckMessage.NodeMap` with its on state. If the peer sent a
-new node or a node with an older heartbeat, the initiator's will replace the node in its state with the node from the
-peer.
-It will them compose a new message:
+message. The initiator compares the heartbeat of every node in the `AckMessage.NodeMap` with its on state. If the peer 
+sent a new node or a node with an older heartbeat, the initiator's will replace the node in its state with the node 
+from the peer. It will them compose a new message:
 
 ```go
 package irrelivant
@@ -177,6 +175,15 @@ type Ack2Message struct {
 	NodeMap NodeMap
 }
 ```
+#### Closing the Conversation
+
+After receiving the final ack2 message, the initiator will update its own state using the same policy as the peer
+in the section. It will then close the conversation.
+
+### Propagation Rate
+
+The propagation rate of cluster state is tuned by the interval at which a node gossips. Higher propagation rates
+will result in heavier network traffic, so it's up to the application to determine the appropriate balance.
 
 ## Key-Value Store
 
