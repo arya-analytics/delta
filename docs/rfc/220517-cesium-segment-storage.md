@@ -88,8 +88,7 @@ wide metadata in addition to segmented telemetry.
 
 [etcd](https://etcd.io/) is the most popular choice in this category, and can be run in a pseudo-embedded mode using
 [embed](https://pkg.go.dev/go.etcd.io/etcd/embed). This package allows for embedded bootstrapping of a cluster.
-Unfortunately,
-but API calls to the key-value interfaces must still be done using a client over a network.
+Unfortunately, calls to the key-value interfaces must still be done using a client over a network.
 
 etcd uses Raft to achieve consensus, and replicates writes to all nodes in the cluster. This means that write
 amplification
@@ -143,7 +142,7 @@ sample rates (+/- a few nanoseconds in the case of most data acquisition compute
 caller to
 decide whether fluctuations in the sample rate are acceptable.
 
-This decision was made with an assumption that the precision of data recorded by a DAQ is high enough that the
+This decision was made with the assumption that the precision of data recorded by a DAQ is high enough that the
 consumer doesn't really care about the exact timestamp of a particular sample. This assumption can be extended beyond
 the high rate hardware DAQ use case to IOT or infrastructure monitoring workloads. For example, a DevOps engineer wants
 to monitor the number of requests to a particular API endpoint. The web server pushes this data to a Cesium backed
@@ -193,12 +192,11 @@ can be calculated with the following equation:
 
 <p align="middle">
 <br>
-<img src="https://render.githubusercontent.com/render/math?math=t_{n} = t_{0} * \frac{n*D}{S}" height="30px" alt="latex eq" >
+<img src="https://render.githubusercontent.com/render/math?math=t_{n} = t_{0}%2B\frac{n + D}{S}" height="30px" alt="latex eq" >
 </p> 
 
 Where `D` is the density of the channel in bytes, `S` is the sample rate in Hz, and the independent variable `n`
-represents
-the nth sample in the segment (the first sample has index 0).
+represents the nth sample in the segment (the first sample has index 0).
 
 A segment places no restrictions on the amount of samples it can store. This has important implications for both
 durability and write throughput. Larger segments are less durable (written less frequently) but can achieve a higher
@@ -237,7 +235,6 @@ retrieved,
 or removed from disk.
 
 Instead of writing a storage engine that can handle both metadata and segment data, Cesium proposes an alternative
-architecture that *extends* an existing key-value store. This store handles all metadata, and Cesium uses to index the
 location of Segments on disk.
 
 This approach drastically simplifies Cesium's implementation, allowing it to make use of well-written iteration APIs
@@ -257,7 +254,7 @@ model as it bears a resemblance to Unix pipes.
 
 Core vocabulary for the following technical specification:
 
-**Stage**: An interface that receives samples from one or more streams, does some operation on those samples, and
+**Stage** - An interface that receives samples from one or more streams, does some operation on those samples, and
 pipes the results to one or more output streams. In a [Sawzall](https://research.google/pubs/pub61/) style processing
 engine, an stage would be comparable to an aggregator.
 
@@ -266,14 +263,14 @@ engine, an stage would be comparable to an aggregator.
 **Shared Stage** - An stage that is involved in serving multiple requests (i.e. several input streams from different
 processes)
 
-**Pipe**: A pipe is an ordered sequence of stages, where the output stream(s) of each stage is the input stream(s)
+**Pipe** - A pipe is an ordered sequence of stages, where the output stream(s) of each stage is the input stream(s)
 for the next stage. In Cesium's case, the ends of the pipe are the caller and disk reader respectively (the order
 reverses for different query variants).
 
-**Assembly**: The processing of selecting and initializing segments for a particular pipe. Assembly is a process that
+**Assembly** - The processing of selecting and initializing segments for a particular pipe. Assembly is a process that
 typically parses a query, builds a plan, and assembles the pipe.
 
-**Execution**: The transfer/processing of samples from one end of the pipe to the other i.e. the streaming process.
+**Execution** - The transfer/processing of samples from one end of the pipe to the other i.e. the streaming process.
 Often times, the Assembly process doesn't provide enough information to fully execute the query, so the execution
 process
 can parse context within the samples to order additional transformations/alternate routing.
@@ -296,9 +293,9 @@ A query with the following syntax:
 // res is a channel that returns read segments along with errors encountered 
 // during execution. err is an error encountered during query assembly.
 res, err := cesium.NewRetrieve().
-WhereChannels(1).
-WhereTimeRange(telem.NewTimeRange(0, 15)).
-Stream(ctx)
+                    WhereChannels(1).
+                    WhereTimeRange(telem.NewTimeRange(0, 15)).
+                    Stream(ctx)
 ```
 
 We're looking for all data from a channel with key 1 from time range 0 to 15 (the units are unimportant). We can use
@@ -314,10 +311,8 @@ the response channel when all ops are completed.
 stage after either reaching a pre-configured maximum batch size or a ticker with a pre-configured interval has elapsed.
 This is used to modulate disk IO and improve the quality of batching in the next stage.
 
-**Stage 3** - Shared - Batcher - Receives a set of disk operations and batches them into more efficient groups. This
-stage first groups together disk operations that are related to the same file, and then sorts the operations by the
-offset
-in the file. This maximizes sequential IO.
+**Stage 3** - Shared - Batcher - Receives a set of disk operations and batches them into more efficient groups. Groups together disk operations that are related to the same file, and then sorts the operations by their
+offset in the file. This maximizes sequential IO.
 
 **Stage 4** - Shared - Persist - Receives a set of disk operations and distributes them over a set of workers to perform
 concurrent access on different files. This stage also manages a set of locks on top of a file system to ensure multiple
@@ -350,8 +345,8 @@ for metadata context, and passes a set of parsed operations to the next stage.
 
 **Stage 2** - Debounced Queue - Same behavior as for [Retrieve](#retrieve-query-execution).
 
-**Stage 3** - Shared - Batcher - Receives a set of disk operations and batches them into more efficient groups. It first
-groups disk operations belonging to the same file, then groups them by channel, and finally sorts them in time-order.
+**Stage 3** - Shared - Batcher - Receives a set of disk operations and batches them into more efficient groups. 
+Groups disk operations belonging to the same file, then groups them by channel, and finally sorts them in time-order.
 
 **Stage 4** - Shared - Persist - Same behavior as for [Retrieve](#retrieve-query-execution). This stage is shared
 with the retrieve query pipe.
@@ -372,8 +367,8 @@ Future iterations may involve inserting stages into the simplex stream between t
 to perform aggregations on the data before returning it to the caller.
 
 It's also relevant to note that Cesium uses a large number of goroutines for a single query. This is (kind of)
-intentional, as Cesium is optimized for high throughput on lower amounts of large queries.
-See [Channel Counts and Segment Merging](#channel-counts-and-segment-merging) for more information how number of open
+intentional, as Cesium is optimized for high throughput on fewer, large queries.
+See [Channel Counts and Segment Merging](#channel-counts-and-segment-merging) for more information how the number of open
 queries affects performance. 
 
 # Data Layout + Operations
@@ -385,7 +380,7 @@ When considering the organization of Segment data on disk, I decided to design a
 1. Sequential IO is better than random IO.
 2. Multi-value access is more important than single-value access.
 3. Data is largely incompressible (i.e. it meets the requirements for Kolmogorov Randomness).
-4. Time-order reads and writes form the overwhelming majority of operations.
+4. Time-ordered reads and writes form the overwhelming majority of operations.
 5. Performant operations on a single channel are more important than on multiple channels.
 
 ## Columnar vs. Row Based
@@ -467,7 +462,7 @@ As we increase the data rate of a channel, we'll also likely increase the size o
 mean a few things:
 
 1. Far less disk IO / sample.
-2. Much large contiguous runs of data for a single channel. This means a lot of fast, sequential IO.
+2. Much larger contiguous runs of data for a single channel. This means a lot of fast, sequential IO.
 3. Less KV operations needed for metadata (this applies to both create and retrieve queries).
 
 These changes ultimately result in a much higher write throughput for channels with high data rates (up in the hundreds
@@ -476,7 +471,7 @@ data in migration scenarios. The absolute limit for a segment is related to the 
 the amount of memory available to the database. However, a more practical limit relates to the maximum message size of
 a segment that needs to be sent over the network.
 
-This so called 'elasticity' means that the throughput for a channel increases with sample rate. By tuning
+This so called 'elasticity' means that the throughput for a channel increases with sample rate. By adjusting
 other knobs in the database (such as debounce queue flush rate, batch size, etc.) we can tune the so called 'curve' of
 this relationship to meet specific use cases (for example, a 1Hz DAQ that has 10000 channels vs a 1 MHz DAQ that has
 10 channels).
@@ -504,19 +499,20 @@ amplification.
 A segment merging algorithm could resemble the following:
 
 1. Wait for a file to exceed its maximum size and be closed by the DB.
-2. Query all segments in the file from KV and sort them by channel key and then by order.
-3. Calculate new offsets for the position of each sorted segment. 
-4. Rewrite the contents of the file using the new offsets.
-5. Persist the new segments to KV. 
+2. Query all segments in the file from KV
+3. Group them by channel key.
+4. Sort the groups by time-order.
+5. Calculate new offsets for the position of each sorted segment. 
+6. Rewrite the contents of the file using the new offsets.
+7. Persist the new segments to KV. 
 
 Segment merging is also useful in the case of low rate channels. Channels with samples rates under 1Hz will write very
 small segments. This lends itself increased IO randomness during reads (Low data rates -> more channels -> smaller segments
 -> high channel cardinality -> frequent random access). By sorting and merging segments, we can reduce both the number of
 kv lookups and increase sequential IO.
 
-In addition to write amplification, segment merging is also complex. We go from a database that writes a data once and then
-leaves it to adding multiple updates and rewrites. Segment merging only occurs after a file is closed. Recent data (which 
-generally lives in open files) is generally accessed far more frequently than older data. Reads to recent data won't
+In addition to write amplification, segment merging is also complex. We go from a database that writes data once to adding multiple updates and rewrites. Segment merging only occurs after a file is closed. Recent data (which 
+generally lives in open files) is typically accessed more frequently than older data. Reads to recent data won't
 benefit from segment merging unless the file size is drastically reduced, which leads to large numbers of files.
 
 These consequences mean I'm deciding to leave segment merging out of the scope of this RFC's implementation. This is not
