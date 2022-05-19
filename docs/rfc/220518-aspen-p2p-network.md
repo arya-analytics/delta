@@ -348,8 +348,7 @@ type SyncMessage struct {
 
 #### Step B - Peer Processes Update and Response (Ack)
 
-After receiving a sync message, the peer node processes the updates by merging its own state based on the version of
-each message. The node also persists the updates to state. The peer node then sends the following ack message back to
+After receiving a sync message, the peer node [merges](#merging-updates) the updates into its own state. The node also persists the updates to state. The peer node then sends the following ack message back to
 the initiator:
 
 ```go
@@ -367,24 +366,30 @@ type AckMessage struct {
 	//   2. Are not already in the peer node's update list. 
 	//   3. Have a higher version than the peer node's update.
 	Updates UpdatePropagationList
-	// Feedback is a list of Feedback for the updates a node already has (versions must be identical). 
+	// Feedback is a list of Feedback for the updates a node already has 
+	// (versions must be identical). 
 	Feedback []Feedback
 }
 ```
 
 #### Step C - Initiator Processes Update
 
-After receiving an ack message, the initiator node processes the updates in the same manner as step B. Then it processes
-each feedback entry in the following manner:
+After receiving an ack message, the initiator [merges ](#merging-updates) the updates into its own state. Then, for
+each feedback entry, it flips a coin with an `R` probability of returning true. If the coin is true,
+sets the state of the update with the matching key to `StateRemoved`. End of gossip.
 
-1. Sets the state of the update with the matching key to StateRemoved based on a recovery probability `R`
-   and persists the change to KV.
+### Merging Updates
 
-End of gossip.
+Whenever a node receives an `UpdatePropagationList` from another node, it must merge the updates into its own state.
+This process is relevant to steps B and C of the layer 2 gossip algorithm. An update from the remote list is appended
+to internal state if it meets the following requirements:
+
+1. It isn't already in internal state.
+2. The version in internal state is lower than its version.
 
 ### Life of a Get
 
-Aspen does not support remote get requests. If a key cannot be found in underlying KV, returns a ErrNotFound error. This
+Aspen does not support remote get requests. If a key cannot be found in underlying KV, returns a `ErrNotFound`. This
 decision was made for two reasons:
 
 1. We maintain a consistent view of storage even when other cluster members cannot be reached.
@@ -395,9 +400,11 @@ returning a value.
 
 Providing consistent remote reads is an undertaking for future iterations.
 
-### Merging Updates
+### Garbage Collection
 
-### Garbage Collecting Tombstones
+#### Set Updates
+
+#### Delete Tombstones
 
 ### Recovery Constant
 
