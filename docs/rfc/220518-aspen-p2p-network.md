@@ -240,7 +240,8 @@ The first node to join the cluster is provided with no peer addresses. It will a
 ### Implications of Algorithm
 
 Using a quorum based approach to ID assignment means that we get a strong guarantee that a node will be assigned a
-unique identifier. It also means that a cluster with less than half of its nodes available will not be able to add new members.
+unique identifier. It also means that a cluster with less than half of its nodes available will not be able to add new
+members.
 This is an important property to consider in scenarios with extremely dynamic cluster membership.
 
 ## Key-Value Store
@@ -318,6 +319,8 @@ type Update struct {
 	State UpdateState
 	// Version is incremented every time an existing key is updated.
 	Version int32
+	// Operation is the operation type of the update.
+	Operation Operation
 }
 
 type UpdatePropagationList map[interface{}]Update
@@ -348,7 +351,8 @@ type SyncMessage struct {
 
 #### Step B - Peer Processes Update and Response (Ack)
 
-After receiving a sync message, the peer node [merges](#merging-updates) the updates into its own state. The node also persists the updates to state. The peer node then sends the following ack message back to
+After receiving a sync message, the peer node [merges](#merging-updates) the updates into its own state. The node also
+persists the updates to state. The peer node then sends the following ack message back to
 the initiator:
 
 ```go
@@ -375,17 +379,21 @@ type AckMessage struct {
 #### Step C - Initiator Processes Update
 
 After receiving an ack message, the initiator [merges ](#merging-updates) the updates into its own state. Then, for
-each feedback entry, it flips a coin with an `R` probability of returning true. If the coin is true,
+each feedback entry, it flips a coin with a `k` probability of returning true. If the coin is true,
 sets the state of the update with the matching key to `StateRemoved`. End of gossip.
 
 ### Merging Updates
 
 Whenever a node receives an `UpdatePropagationList` from another node, it must merge the updates into its own state.
-This process is relevant to steps B and C of the layer 2 gossip algorithm. An update from the remote list is appended
-to internal state if it meets the following requirements:
+This process is relevant to steps B and C of the layer 2 gossip algorithm. Each update in the list is merged as follows:
 
-1. It isn't already in internal state.
-2. The version in internal state is lower than its version.
+1. If the remote update isn't present in local memory, do a KV lookup to see if we've persisted the update already. If
+   we
+   haven't, add to internal state.
+
+2. The remote update is newer than the version in internal state. If this is the case, add the update to internal state.
+
+After the updates to merge have been selected, the node must persist them to KV.
 
 ### Life of a Get
 
@@ -395,16 +403,36 @@ decision was made for two reasons:
 1. We maintain a consistent view of storage even when other cluster members cannot be reached.
 2. We can simply extend the kv interface of an existing store, providing functionality such as prefix iteration.
 
-This means that the only difference between a read to a local KV store is that we check for deletion tombstones before
-returning a value.
-
 Providing consistent remote reads is an undertaking for future iterations.
 
 ### Garbage Collection
 
-#### Set Updates
+An update only needs to be kept until it has propagated to all cluster members. Unfortunately, determining the interval
+of convergence is difficult. Aspen uses the equations presented in 
+[Gossip](https://www.inf.u-szeged.hu/~jelasity/ddm/gossip.pdf) to estimate a interval of convergence. The following equation
+approximates the number of message (`m`) needed to update all but `s` proportion of the cluster:
 
-#### Delete Tombstones
+<p align="middle">
+<br>
+<img src="https://render.githubusercontent.com/render/math?math=m \approx -N\text{log}s" height="30px" alt="latex eq" >
+</p> 
+
+This equation shows that the convergence interval is directly dependent on:
+
+1. The `k` parameter laid out in step c of the layer 2
+2. The number of cluster members (`N`)
+3. Our consistency requirements (`s`) i.e. the probability that a node does not receive an update.
+4. The frequency at which infected nodes can send `m` update messages.
+
+Aspen will tune these parameters to experimentally determine a suitable estimate for the interval of convergence. Future
+iterations will likely involve a more complex, mathematically driven approach. 
+
+Once we've determined a suitable interval, we can them move on to the GC process itself.
+
+An update log for a particular key is replaced every time the key is updated (i.e. the version is incremented). We can
+store a timestamp along with the set metadata. If the duration between the timestamp and GC is greater than the convergence
+interval, we can remove the update from persisted storage. The same process applies for both set operations
+and delete tombstones. 
 
 ### Recovery Constant
 
