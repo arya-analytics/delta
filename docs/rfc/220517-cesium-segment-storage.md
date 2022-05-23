@@ -50,17 +50,17 @@ evolve.
 **Sample** - An arbitrary byte array recorded at a specific point in time.  \
 **Channel** - A collection of samples across a time range. \
 **Segment** - A partitioned region of a channel's data.  \
-**Regular** - (in relation to time-series) - A 'regular' Channel is one whose samples are recorded at regular intervals
+**Regular** (in relation to time-series) - A 'regular' Channel is one whose samples are recorded at regular intervals
 (1Hz, 5Hz, 10Hz, etc.) \
 **Samples/Second** - A basic measure of write throughput. The size of a regular sample should be assumed as 8 bytes (
 i.e. a
 float64 value) unless otherwise specified, whereas an irregular sample is assumed to contain an additional 64 bit
 timestamp.
-Write throughput can also be expressed in terms of a frequency (1Hz, 5Hz, 25 KHz, 1 MHz, etc.) \
+Write throughput can also be expressed in terms of a frequency (1Hz, 5Hz, 25 KHz, 1MHz, etc.) \
 **DAQ** - Data Acquisition Computer.
 **Channel Cardinality** - The number of unique channel keys for a set of segments in a file.
 
-This RFC expands on these definitions by defining specific properties of a Channel, Segment, and Sample.
+This RFC expands on these definitions by asserting specific properties of a Channel, Segment, and Sample.
 These properties are omitted from the above definitions as they may fluctuate and affect storage engine implementation
 details.
 
@@ -68,14 +68,15 @@ details.
 
 The product pivot from [Arya Core](https://arya-analytics.atlassian.net/wiki/spaces/AA/pages/819257/00+-+Arya+Core) to
 [Delta](https://arya-analytics.atlassian.net/wiki/spaces/AA/pages/9601025/01+-+Delta) is the main driver behind this
-RFC.
-Moving from a 'database proxy' to a single binary 'database' style architecture means we must either:
+RFC. Arya Core was built as a database proxy that merged and synchronized network requests into several databases.
+Delta is a single binary that implements an entire database including a storage engine. This means we must:
 
 1. Find an existing embedded storage engine written in Go.
 2. Write a new storage engine tailored towards Delta's specific use case.
 
-Writing a database storage engine is quite an endeavour, taking years and many development cycles, so we'd ideally use
-an existing storage engine or at least extend its functionality.
+Writing a database storage engine is quite an endeavour, so we'd ideally use an existing one (or at least
+extend its functionality). The following analysis on existing solutions ultimately led to a design that
+extends CockroachDB's [pebble](https://github.com/cockroachdb/pebble).
 
 ## Existing Solutions
 
@@ -511,7 +512,7 @@ this relationship to meet specific use cases (for example, a 1Hz DAQ that has 10
 
 A Delta node that acquires data is meant to be deployed in proximity to or on a data acquisition computer (DAQ).
 This typically means that a single node will handle no more than ~5000 channels at once. Cesium's architecture
-is designed with this in mind, and can handle a relatively small number of channels per database when compared to its 
+is designed with this in mind, and can handle a relatively small number of channels per database when compared to its
 alternatives (e.g. [TimescaleDB](https://www.timescale.com/), and [InfluxDB](https://www.influxdata.com/)).
 
 This is the main reason why Cesium allocates a large number of goroutines per query; the optimization lies in throughput
@@ -523,7 +524,8 @@ maximum number of file descriptors is low, however, this effect is negligible. B
 typical to expect high cardinality in the input stream of a create query with a larger number of channels. With a low
 descriptor count, we end up adding lots of discontinuities in a channel's data.
 
-A potential solution is to re-order and merge Segments post-write (ensuring the DB is durable while still maximizing sequential IO). 
+A potential solution is to re-order and merge Segments post-write (ensuring the DB is durable while still maximizing
+sequential IO).
 The downside here is that we end up with quite a bit of write amplification.
 
 A segment merging algorithm could resemble the following:
@@ -538,15 +540,19 @@ A segment merging algorithm could resemble the following:
 
 Segment merging is also useful in the case of low rate channels. Channels with samples rates under 1Hz will write very
 small segments. This results in increased IO randomness during reads (Low data rates -> more channels -> smaller
-segments -> high channel cardinality -> frequent random access). By sorting and merging segments, we can reduce both 
+segments -> high channel cardinality -> frequent random access). By sorting and merging segments, we can reduce both
 the number of kv lookups and increase sequential IO.
 
-Segment merging also adds complexity. We go from a database that writes data once to adding multiple updates and rewrites. 
-Segment merging only occurs after a file is closed. Recent data (which generally lives in open files) is typically accessed 
-more frequently than older data. Reads to recent data won't benefit from segment merging unless the file size is drastically 
+Segment merging also adds complexity. We go from a database that writes data once to adding multiple updates and
+rewrites.
+Segment merging only occurs after a file is closed. Recent data (which generally lives in open files) is typically
+accessed
+more frequently than older data. Reads to recent data won't benefit from segment merging unless the file size is
+drastically
 reduced. This leads to large numbers of files.
 
-I'm deciding to leave segment merging out of the scope of this RFC's implementation. This is not to say it doesn't belong 
+I'm deciding to leave segment merging out of the scope of this RFC's implementation. This is not to say it doesn't
+belong
 in subsequent iterations.
 
 # Iteration
