@@ -145,8 +145,10 @@ package irrelivant
 
 type AckMessage struct {
 	// A list of digests for nodes in the peer's state that:
+	//
 	//    1. The peer node has not seen.
-	//    2. Have a younger heartbeat than in the sender's Digest.
+	//    2. Have an older heartbeat than in the sender's Digest.
+	//
 	Digests []Digest
 	// A NodeMap of nodes in the peer's state that:
 	//
@@ -419,7 +421,7 @@ approximates the number of message (`m`) needed to update all but `s` proportion
 
 This equation shows that the convergence interval is directly dependent on:
 
-1. The `k` parameter laid out in step c of the layer 2
+1. The `k` parameter laid out in step c of the layer 2 gossip algorithm.
 2. The number of cluster members (`N`)
 3. Our consistency requirements (`s`) i.e. the probability that a node does not receive an update.
 4. The frequency at which infected nodes can send `m` update messages.
