@@ -394,7 +394,7 @@ with the retrieve query pipe.
 <h6 align="middle">Combined Cesium Pipe Architecture</h6>
 </p>
 
-Future iterations may involve inserting stages into the simplex stream between the Operation and Interface stage
+Future iterations may involve inserting stages into the simplex stream between the Operation and Interface stages
 to perform aggregations on the data before returning it to the caller.
 
 It's also relevant to note that Cesium uses a large number of goroutines for a single query. This is (kind of)
@@ -454,11 +454,11 @@ An option is to include this metadata along with the segment:
 Adding this 'header' is the most intuitive way to represent the data, but has implications for retrieving it.
 When searching for the start of a time range, Cesium must jump from header to header until it finds a matching
 timestamp. For larger files, this can be a costly operation. Instead, Cesium stores the segment header in key-value
-storage along with its file and offset. When retrieving a set of segments, Cesium first does a kv lookup to find the
+storage along with its file and offset. When retrieving a set of segments, Cesium first does a KV lookup to find the
 the location on disk, then proceeds to read it from the file.
 
 This structure also lends itself well to aggregation. We can calculate the average, minimum, maximum, std dev, etc.
-and store it as metadata in kv. When executing an aggregation across a large time range, Cesium avoids reading
+and store it as metadata in KV. When executing an aggregation across a large time range, Cesium avoids reading
 segments from disk, and instead just uses these pre-calculated values.
 
 ### File Allocation
@@ -483,9 +483,9 @@ OLTP databases are designed for high request throughput of small transactions. T
 extremely important factor. Cesium follows a different pattern. In section [Segments](#segments), we placed no
 restriction on the
 size of the data slice for a Segment. At its lowest capacity, a Segment holds only a single sample. When writing single
-sample segments, Cesium will perform worse than a standard key-value store (as we need to do writes to both KV and disk)
+sample segments, Cesium will perform worse than a standard key-value store (as it needs to do writes to both KV and disk)
 .
-This is less of an issue than it seems. A single sample segment is most likely channel with a low data rate
+This is less of an issue than it seems. A single sample segment is most likely channelled with a low data rate
 (i.e. a sample arrives every 15 seconds or greater). In this case, high performance doesn't really matter. Even if we
 execute writes with an extremely low throughput of 1 sample per second, we're still far below the threshold needed to
 satisfy the query.
@@ -512,7 +512,7 @@ this relationship to meet specific use cases (for example, a 1Hz DAQ that has 10
 
 A Delta node that acquires data is meant to be deployed in proximity to or on a data acquisition computer (DAQ).
 This typically means that a single node will handle no more than ~5000 channels at once. Cesium's architecture
-is designed with this in mind, and can handle a relatively small number of channels per database when compared to its
+is designed with this in mind, and can handle a relatively small number of channels per database compared to its
 alternatives (e.g. [TimescaleDB](https://www.timescale.com/), and [InfluxDB](https://www.influxdata.com/)).
 
 This is the main reason why Cesium allocates a large number of goroutines per query; the optimization lies in throughput
@@ -543,7 +543,7 @@ small segments. This results in increased IO randomness during reads (Low data r
 segments -> high channel cardinality -> frequent random access). By sorting and merging segments, we can reduce both
 the number of kv lookups and increase sequential IO.
 
-Segment merging also adds complexity. We go from a database that writes data once to adding multiple updates and
+Segment merging also adds complexity. We go from a database that writes data once to one that adds multiple updates and
 rewrites.
 Segment merging only occurs after a file is closed. Recent data (which generally lives in open files) is typically
 accessed
