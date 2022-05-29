@@ -1,7 +1,7 @@
 # Cesium - Channel Segment Storage Engine
 
 **Feature Name:** Channel Segment Storage Engine \
-**Status**: In Review \
+**Status**: Complete \
 **Start Date**: 2022-05-17 \
 **Authors**: emilbon99 \
 **Jira Issue**:  [DA-149 - [Cesium] - RFC](https://arya-analytics.atlassian.net/browse/DA-149)
