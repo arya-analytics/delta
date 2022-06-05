@@ -471,8 +471,8 @@ propose a viable solution.
 
 #### Forward Entire Store
 
-This is definitely the simplest approach. When a node recovers and begins to gossip its state once again, a peer will
-detect the recovery, and will start the forwarding its entire state using the following algorithm (we'll call the 'recovering'
+This is definitely the simplest approach. When a node recovers and begins to gossip its state once again, a peer
+detects the recovery, and starts forwarding its entire state using the following algorithm (we'll call the 'recovering'
 node the patient and the forwarding peer the 'doctor'):
 
 1. The doctor detects the patient's recovery, and sends a message to acquire a role as the patient's doctor. The patient
@@ -489,12 +489,12 @@ susceptible to bugs that involve an old operation accidentally overwriting a new
 
 #### Forward Entire Store as Gossip
 
-This second approach involves essentially the same process, except that the patient ingestion process is done through
+This second approach involves essentially the same process, except that patient ingestion is done through
 the normal gossip pipeline. This allows a node to actively check whether it's overwriting an old version. It also minimizes
 complexity by reusing the same software infrastructure to forward recovery operations.
 
 The problem is that this approach involves using the same amount of network traffic AND is far more inefficient than
-doing something like a blind `SSTable` ingestion with `pebble`
+doing something like a blind `SSTable` ingestion with `pebble`.
 
 
 #### High Water Marking
@@ -508,12 +508,12 @@ type HighWaterMarks map[node.ID]version.Counter
 ```
 
 Assigning an accurate high water mark to a node is far more challenging than it first seems. It's not given that a node
-will receive operations in sequential order. Recovery parameters or oddities in the network mean that node 3 may receive
-operation `version.Counter(3)` before it receives `version.Counter(2)` from node 1.If Node 3 blindly updates its
-high water mark version to 3, it's inadvertently saying it has received operation 2, which is not true. This is a rare
+will receive operations in sequential order. Recovery parameters or oddities in the network mean that node A may receive
+operation `version.Counter(3)` before it receives `version.Counter(2)` from node B.If Node A blindly updates its
+high water mark version for Node B to 3, it's inadvertently saying it has received operation 2, which is not true. This is a rare
 case, but must be handled properly in order to maintain effective eventual consistency.
 
-Node 3 will need to track the "gaps" in its high water mark using some sort of virtual WAL:
+Node A will need to track the "gaps" in its high water mark using some sort of virtual WAL:
 
 ```go
 type HighWaterMarks map[node.ID]struct{
@@ -525,23 +525,23 @@ WAL []version.Counter
 }
 ```
 
-To put our earlier example into practice, this is what the high water mark map would  hold for node 3:
+To put our earlier example into practice, this is what the high water mark map would hold for node A:
 
 ```go
-hw := HighWaterMarks{1: {Mark: version.Counter(1), WAL: []version.Counter{3}}}
+nodeAHighWater := HighWaterMarks{B: {Mark: version.Counter(1), WAL: []version.Counter{3}}}
 ```
 
-After node 3 receives operation 2, the high water marks can be updated:
+After node A receives operation 2, the high water marks can be updated:
 
 ```go
-hw := HighWaterMarks{1: {Mark: version.Counter(3), WAL: []version.Counter{}}}
+nodeAHighWater := HighWaterMarks{B: {Mark: version.Counter(3), WAL: []version.Counter{}}}
 ```
 
-Now that we've defined what a high water mark is, we can see how they help in making our key-value failure recovery system
-more efficient. After the patient node receives a doctor's request, it can acknowledge the request with a list of operations
-that contain it's last remembered high water marks.
+High water marks can help in making Aspen's key-value failure recovery system more efficient. After the patient node
+receives a doctor's request, it can acknowledge the request with a list of operations that contain it's last remembered
+high water marks.
 
-Now, the doctor node can avoid sending all operations before the high water mark, reducing the amount of network traffic
+The doctor node can now avoid sending all operations before the high water mark, reducing the amount of network traffic
 substantially.
 
 #### Concrete Algorithm
@@ -560,10 +560,3 @@ could potentially be extended to bringing new nodes up to speed when they join t
 might be better to use the faster SSTable ingestion).
 
 All of these algorithms are designing around the principle that Aspen is intended for small amounts of data (~100,000 keys MAX).
-
-## Cluster Topology and Routing
-
-
-
-
-
