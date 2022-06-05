@@ -57,7 +57,7 @@ i.e. a
 float64 value) unless otherwise specified, whereas an irregular sample is assumed to contain an additional 64 bit
 timestamp.
 Write throughput can also be expressed in terms of a frequency (1Hz, 5Hz, 25 KHz, 1MHz, etc.) \
-**DAQ** - Data Acquisition Computer.
+**DAQ** - Data Acquisition Computer. \
 **Channel Cardinality** - The number of unique channel keys for a set of segments in a file.
 
 This RFC expands on these definitions by asserting specific properties of a Channel, Segment, and Sample.
