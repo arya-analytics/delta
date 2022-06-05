@@ -1,6 +1,6 @@
 # Aspen - Gossip Based Peer to Peer Key-Value Store
 
-**Feature Name**: Aspen, a Gossip Based Peer to Key-Value Store \
+**Feature Name**: Aspen, a Gossip Based Peer to Peer Key-Value Store \
 **Status**: Proposed \
 **Start Date**: 2022-05-18 \
 **Authors**: emilbon99 \
