@@ -559,4 +559,4 @@ The number of doctors can be scaled to reduce the chances of failure during reco
 could potentially be extended to bringing new nodes up to speed when they join the cluster (although in this case it
 might be better to use the faster SSTable ingestion).
 
-All of these algorithms are designing around the principle that Aspen is intended for small amounts of data (~100,000 keys MAX).
+All of these algorithms are designed around the principle that Aspen is intended for small amounts of data (~100,000 keys MAX).
