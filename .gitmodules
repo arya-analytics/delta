@@ -1,0 +1,9 @@
+[submodule "vendor/aspen"]
+	path = vendor/aspen
+	url = https://github.com/arya-analytics/aspen
+[submodule "vendor/x"]
+	path = vendor/x
+	url = https://github.com/arya-analytics/x
+[submodule "vendor/cesium"]
+	path = vendor/cesium
+	url = https://github.com/arya-analytics/cesium
