@@ -499,6 +499,67 @@ doing something like a blind `SSTable` ingestion with `pebble`
 
 #### High Water Marking
 
+My proposed solution to the above inefficiencies involves a technique called high water marking. Each node keeps track
+of a "high water" mark that represents the highest version that a node has received from another node. This data structure
+can be represented using the following map:
+
+```go
+type HighWaterMarks map[node.ID]version.Counter
+```
+
+Assigning an accurate high water mark to a node is far more challenging than it first seems. It's not given that a node
+will receive operations in sequential order. Recovery parameters or oddities in the network mean that node 3 may receive
+operation `version.Counter(3)` before it receives `version.Counter(2)` from node 1.If Node 3 blindly updates its
+high water mark version to 3, it's inadvertently saying it has received operation 2, which is not true. This is a rare
+case, but must be handled properly in order to maintain effective eventual consistency.
+
+Node 3 will need to track the "gaps" in its high water mark using some sort of virtual WAL:
+
+```go
+type HighWaterMarks map[node.ID]struct{
+// Mark indicates the most recent version whose history is contiguous (i.e. all previous versions have been received).
+Mark version.Counter
+// WAL keeps a log of all versions received non-contiguously. This log can be garbage collected after a contiguous
+// run of versions have been received.
+WAL []version.Counter
+}
+```
+
+To put our earlier example into practice, this is what the high water mark map would  hold for node 3:
+
+```go
+hw := HighWaterMarks{1: {Mark: version.Counter(1), WAL: []version.Counter{3}}}
+```
+
+After node 3 receives operation 2, the high water marks can be updated:
+
+```go
+hw := HighWaterMarks{1: {Mark: version.Counter(3), WAL: []version.Counter{}}
+```
+
+Now that we've defined what a high water mark is, we can see how they help in making our key-value failure recovery system
+more efficient. After the patient node receives a doctor's request, it can acknowledge the request with a list of operations
+that contain it's last remembered high water marks.
+
+Now, the doctor node can avoid sending all operations before the high water mark, reducing the amount of network traffic
+substantially.
+
+#### Concrete Algorithm
+
+The concrete algorithm for recovering a node's key-value store after failure:
+
+1. The doctor detects the patient's recovery, and sends a message to acquire a role as the patient's doctor. The patient
+either denies the request or forwards its high water marks to the doctor.
+
+2. The doctor processes the high water marks, and gossips the missing operations to the patient.
+
+3. The patient persists the operations to storage.
+
+The number of doctors can be scaled to reduce the chances of failure during recovery. The use case for this algorithm
+could potentially be extended to bringing new nodes up to speed when they join the cluster (although in this case it
+might be better to use the faster SSTable ingestion).
+
+All of these algorithms are designing around the principle that Aspen is intended for small amounts of data (~100,000 keys MAX).
 
 ## Cluster Topology and Routing
 
