@@ -6,35 +6,6 @@
 **Authors**: emilbon99 \
 **Jira Issue**:  [DA-149 - [Cesium] - RFC](https://arya-analytics.atlassian.net/browse/DA-149)
 
-# Table of Contents
-
-* [Summary](#summary)
-    * [Vocabulary](#vocabulary)
-* [Motivation](#motivation)
-    * [Existing Solutions](#existing-solutions)
-        * [Key-Value Stores](#key-value-stores)
-        * [Time-Series Stores](#time-series-stores)
-        * [Distributed Key-Value Stores](#distributed-key-value-stores)
-* [Design](#design)
-    * [Restrictions on Time-Series](#restrictions-on-time-series)
-        * [Channels](#channels)
-        * [Segments](#segments)
-    * [Handling Arbitrary Data Types](#handling-arbitrary-data-types)
-    * [Extending an Existing Key-Value Store](#extending-an-existing-key-value-store)
-    * [Streaming and Iteration](#streaming-and-iteration)
-        * [Retrieve Query Execution](#retrieve-query-execution)
-        * [Create Query Execution](#create-query-execution)
-        * [Combined Pipe Architecture](#combined-pipe-architecture)
-    * [Data Layout + Operations](#data-layout-+-operations)
-        * [First Principles](#first-principles)
-        * [Columnar vs. Row-Based](#columnar-vs-row-based)
-        * [File Allocation](#file-allocation)
-    * [Providing Elastic Throughput](#providing-elastic-throughput)
-    * [Channel Counts and Segment Merging](#channel-counts-and-segment-merging)
-    * [Iteration](#iteration)
-    * [Deletes](#deletes)
-    * [Aggregation and Transformation](#aggregation-and-transformation)
-
 # Summary
 
 In this RFC I propose an architecture for a time-series storage engine that can serve as Delta's primary means of
