@@ -458,6 +458,48 @@ that hashicorp's `memberlist` uses. Detailed designs are left for future RFCs.
 
 ## Failure Recovery
 
+Recovering from failures gracefully follows as a natural extension of detecting them.
+
+### Key-Value Storage
+
+Failure Recovery is particularly relevant with regard to maintaining a consistent key-value store. If a node restarts
+after an extended outage, it will likely miss key-value operations that have already recovered. As a result, it's
+important for a recently revived node to receive all missed operations.
+
+There are a number of approaches to solving the above-mentioned problem. I'll cover a few of the most natural, and then
+propose a viable solution.
+
+#### Forward Entire Store
+
+This is definitely the simplest approach. When a node recovers and begins to gossip its state once again, a peer will
+detect the recovery, and will start the forwarding its entire state using the following algorithm (we'll call the 'recovering'
+node the patient and the forwarding peer the 'doctor'):
+
+1. The doctor detects the patient's recovery, and sends a message to acquire a role as the patient's doctor. The patient
+must acknowledge this request for the doctor to continue to the next step. This is done in order to prevent too many nodes
+in the cluster from forwarding their state, clogging network traffic.
+
+2. After the request is approved, the doctor takes a snapshot of the DB and sends it to the patient. The patient ingests
+the snapshot. The ingestion process is blind, meaning the patient must be careful NOT to persist any gossiped operations
+that may be overwritten.
+
+This approach has its drawbacks. The most obvious is the large volume of data that needs to be sent over the network.
+A large portion of the data we're sending is redundant. The second is the blind ingestion process; this leaves a node
+susceptible to bugs that involve an old operation accidentally overwriting a newer one that has already propagated.
+
+#### Forward Entire Store as Gossip
+
+This second approach involves essentially the same process, except that the patient ingestion process is done through
+the normal gossip pipeline. This allows a node to actively check whether it's overwriting an old version. It also minimizes
+complexity by reusing the same software infrastructure to forward recovery operations.
+
+The problem is that this approach involves using the same amount of network traffic AND is far more inefficient than
+doing something like a blind `SSTable` ingestion with `pebble`
+
+
+#### High Water Marking
+
+
 ## Cluster Topology and Routing
 
 
