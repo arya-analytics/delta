@@ -1,6 +1,6 @@
-# Aspen - Gossip Based Peer to Peer Network
+# Aspen - Gossip Based Peer to Peer Key-Value Store
 
-**Feature Name**: Aspen, a Gossip Based Peer to Peer Network \
+**Feature Name**: Aspen, a Gossip Based Peer to Key-Value Store \
 **Status**: Proposed \
 **Start Date**: 2022-05-18 \
 **Authors**: emilbon99 \
@@ -11,18 +11,14 @@
 # Summary
 
 In this RFC I propose an architecture for a gossip based network that can meet Delta's distributed storage and cluster
-membership
-requirements. Gossip based dissemination is an efficient method for sharing cluster wide state in an eventually
-consistent
-fashion. Delta requires a relatively small distributed store that should ideally be available even on loss of connection
-to the rest of the cluster. A Gossip based network lays the foundations for dynamic cluster membership, failure
-detection,
-and the eventual construction of a strongly consistent store.
+membership requirements. Gossip based dissemination is an efficient method for sharing cluster wide state in an eventually
+consistent fashion. Delta requires a relatively small distributed store that should ideally be available even on loss of
+connection to the rest of the cluster. A Gossip based network lays the foundations for dynamic cluster membership, failure
+detection, and the eventual construction of a strongly consistent store.
 
 This proposal focuses on extreme simplicity to achieve a minimum viable implementation. It aims to provide only
-functionality
-that contributes towards meeting the requirements laid out in
-the [Delta specification](https://arya-analytics.atlassian.net/wiki/spaces/AA/pages/9601025/01+-+Delta).
+functionality that contributes towards meeting the requirements laid out in the
+[Delta specification](https://arya-analytics.atlassian.net/wiki/spaces/AA/pages/9601025/01+-+Delta).
 
 # Vocabulary
 
@@ -53,13 +49,13 @@ unreachable.
 Aspens design consists of two gossip layers:
 
 1. Layer 1 - Uses a Susceptible-Infected (SI) model to spread cluster state in a fashion
-   resembling [Apache Cassandra](https://cassandra.apache.org/_/index.html). All nodes gossip their version of state at
-   a regular interval. This is used to disseminate information about cluster membership and node health. This
-   includes reporting information about failed or suspected nodes
+resembling [Apache Cassandra](https://cassandra.apache.org/_/index.html). All nodes gossip their version of state at
+a regular interval. This is used to disseminate information about cluster membership and node health. This
+includes reporting information about failed or suspected nodes
 
 2. Layer 2 - Uses a Susceptible-Infected-Recovered (SIR) model to propagate key-value sets and deletes in an eventually
-   consistent manner. After receiving a set operation, the node will gossip the key-value pair to all other nodes until
-   a certain number of redundant conversations (i.e. the node already received the update) have occurred.
+consistent manner. After receiving a set operation, the node will gossip the key-value pair to all other nodes until
+a certain number of redundant conversations (i.e. the node already received the update) have occurred.
 
 ## Cluster State Synchronization
 
@@ -80,18 +76,18 @@ Layer 1 holds cluster state in a node map `map[NodeID]Node`. `NodeID` is a uniqu
 ```go
 package irrelivant
 
-// NodeID is a unique identifier for a node. 
+// NodeID is a unique identifier for a node.
 type NodeID int16
 
 type Node struct {
-	ID NodeID
-	// Address is a reachable address for the node.
-	Address address.Address
-	// Version is software version of the node.
-	Version version.MajorMinor
-	// Heartbeat is the gossip heartbeat of the node. See [Heartbeat] for more.
-	Heartbeat Heartbeat
-	// Various additions such as failure detection state, etc. will go here.
+ID NodeID
+// Address is a reachable address for the node.
+Address address.Address
+// Version is software version of the node.
+Version version.MajorMinor
+// Heartbeat is the gossip heartbeat of the node. See [Heartbeat] for more.
+Heartbeat Heartbeat
+// Various additions such as failure detection state, etc. will go here.
 }
 
 type NodeMap map[NodeID]Node
@@ -103,12 +99,12 @@ A node's Heartbeat tracks two values:
 package irrelivant
 
 type Heartbeat struct {
-	// Version is incremented every time the node gossips information about its state. This is 
-	//used to merge differing versions of cluster state during gossip.
-	Version uint32
-	// Generation is incremented every time the node is restarted. This is useful for bringing a node
-	// back up to speed after a long period of absence.
-	Generation uint16
+// Version is incremented every time the node gossips information about its state. This is
+//used to merge differing versions of cluster state during gossip.
+Version uint32
+// Generation is incremented every time the node is restarted. This is useful for bringing a node
+// back up to speed after a long period of absence.
+Generation uint16
 }
 ```
 
@@ -123,14 +119,14 @@ a list of node digests.
 package irrelivant
 
 type Digest struct {
-	// NodeID is the node's unique identifier
-	ID NodeID
-	// Heartbeat is the gossip heartbeat. 
-	Heartbeat Heartbeat
+// NodeID is the node's unique identifier
+ID NodeID
+// Heartbeat is the gossip heartbeat.
+Heartbeat Heartbeat
 }
 
 type SyncMessage struct {
-	Digests []Digest
+Digests []Digest
 }
 ```
 
@@ -144,17 +140,17 @@ After receiving a sync message from the initiator node, the peer node will respo
 package irrelivant
 
 type AckMessage struct {
-	// A list of digests for nodes in the peer's state that:
-	//
-	//    1. The peer node has not seen.
-	//    2. Have an older heartbeat than in the sender's Digest.
-	//
-	Digests []Digest
-	// A NodeMap of nodes in the peer's state that:
-	//
-	//    1. The initiating node has not seen.
-	//    2. Have an older heartbeat than in the sender's Digest.
-	NodeMap NodeMap
+// A list of digests for nodes in the peer's state that:
+//
+//    1. The peer node has not seen.
+//    2. Have an older heartbeat than in the sender's Digest.
+//
+Digests []Digest
+// A NodeMap of nodes in the peer's state that:
+//
+//    1. The initiating node has not seen.
+//    2. Have an older heartbeat than in the sender's Digest.
+NodeMap NodeMap
 }
 
 ```
@@ -172,9 +168,9 @@ from the peer. It will them compose a new message:
 package irrelivant
 
 type Ack2Message struct {
-	// A NodeMap of nodes in the initiator's state that:
-	//  1. Are in the peer's ack digests.
-	NodeMap NodeMap
+// A NodeMap of nodes in the initiator's state that:
+//  1. Are in the peer's ack digests.
+NodeMap NodeMap
 }
 ```
 
@@ -193,7 +189,7 @@ will result in heavier network traffic, so it's up to the application to determi
 Aspen employs a relatively complex process for joining a node to a cluster. This is due to a desire to identify nodes
 using a unique `int16` value. The ID of a node is propagated with almost every message. By using an `int16` vs. `UUID`,
 we can reduce overall network traffic by a significant amount. Node IDs are also used far and wide across the rest of
-Delta, such as in the key for a channel `<NodeID><ChannelID>`. This results in a sample that is 40 percent smaller than
+Delta, such as in the key for a channel `NodeID + ChannelID`. This results in a sample that is 40 percent smaller than
 with a `UUID`.
 
 The downside of using `int16` id's for nodes is that we need to design a distributed counter. Fortunately, this is a
@@ -267,10 +263,10 @@ package irrelivant
 type NodeID int16
 
 type KV interface {
-	// Set sets a key to a value. nodeID specifies the node that holds the lease on the key. 
-	// If nodeID is 0, the lease is assigned to the host node.
-	Set(key []byte, leaseholder NodeID, value []byte) error
-	// Rest of interface is the same as github.com/arya-analytics/x/kv.KV.
+// Set sets a key to a value. nodeID specifies the node that holds the lease on the key.
+// If nodeID is 0, the lease is assigned to the host node.
+Set(key []byte, leaseholder NodeID, value []byte) error
+// Rest of interface is the same as github.com/arya-analytics/x/kv.KV.
 }
 ```
 
@@ -295,34 +291,34 @@ package irrelivant
 type UpdateState byte
 
 const (
-	// StateInfected means the node is actively gossiping the update to other nodes in the cluster.
-	StateInfected UpdateState = iota
-	// StateRecovered means the node is no longer gossiping the update. 
-	StateRecovered
+// StateInfected means the node is actively gossiping the update to other nodes in the cluster.
+StateInfected UpdateState = iota
+// StateRecovered means the node is no longer gossiping the update.
+StateRecovered
 )
 
 type Operation byte
 
 const (
-	// OperationSet represents a kv set operation.
-	OperationSet Operation = iota
-	// OperationDelete represents a kv delete operation.
-	OperationDelete
+// OperationSet represents a kv set operation.
+OperationSet Operation = iota
+// OperationDelete represents a kv delete operation.
+OperationDelete
 )
 
 type Update struct {
-	// Key is the key for the key-value pair.
-	Key []byte
-	// Value is the value for the key-value pair.
-	Value []byte
-	// Leaseholder is the ID of the leaseholder node.
-	Leaseholder NodeID
-	// State is the SIR state of the update.
-	State UpdateState
-	// Version is incremented every time an existing key is updated.
-	Version int32
-	// Operation is the operation type of the update.
-	Operation Operation
+// Key is the key for the key-value pair.
+Key []byte
+// Value is the value for the key-value pair.
+Value []byte
+// Leaseholder is the ID of the leaseholder node.
+Leaseholder NodeID
+// State is the SIR state of the update.
+State UpdateState
+// Version is incremented every time an existing key is updated.
+Version int32
+// Operation is the operation type of the update.
+Operation Operation
 }
 
 type UpdatePropagationList map[interface{}]Update
@@ -345,9 +341,9 @@ The initiating node selects a random peer from layer 1, and set
 package irrelivant
 
 type SyncMessage struct {
-	// Updates contains a list of all updates in the nodes current state where:
-	// 1. Update.State == StateInfected
-	Updates UpdatePropagationList
+// Updates contains a list of all updates in the nodes current state where:
+// 1. Update.State == StateInfected
+Updates UpdatePropagationList
 }
 ```
 
@@ -362,19 +358,19 @@ package irrelivant
 
 // Feedback is a struct representing an update that has already been processed by a node.
 type Feedback struct {
-	Key     []byte
-	Version int32
+Key     []byte
+Version int32
 }
 
 type AckMessage struct {
-	// Updates contains a list of all updates in the nodes current state that:
-	//   1. Update.State == StateInfected
-	//   2. Are not already in the peer node's update list. 
-	//   3. Have a higher version than the peer node's update.
-	Updates UpdatePropagationList
-	// Feedback is a list of Feedback for the updates a node already has 
-	// (versions must be identical). 
-	Feedback []Feedback
+// Updates contains a list of all updates in the nodes current state that:
+//   1. Update.State == StateInfected
+//   2. Are not already in the peer node's update list.
+//   3. Have a higher version than the peer node's update.
+Updates UpdatePropagationList
+// Feedback is a list of Feedback for the updates a node already has
+// (versions must be identical).
+Feedback []Feedback
 }
 ```
 
@@ -390,8 +386,7 @@ Whenever a node receives an `UpdatePropagationList` from another node, it must m
 This process is relevant to steps B and C of the layer 2 gossip algorithm. Each update in the list is merged as follows:
 
 1. If the remote update isn't present in local memory, do a KV lookup to see if we've persisted the update already. If
-   we
-   haven't, add to internal state.
+we haven't, add to internal state.
 
 2. The remote update is newer than the version in internal state. If this is the case, add the update to internal state.
 
@@ -410,14 +405,15 @@ Providing consistent remote reads is an undertaking for future iterations.
 ### Garbage Collection
 
 An update only needs to be kept until it has propagated to all cluster members. Unfortunately, determining the interval
-of convergence is difficult. Aspen uses the equations presented in 
+of convergence is difficult. Aspen uses the equations presented in
 [Gossip](https://www.inf.u-szeged.hu/~jelasity/ddm/gossip.pdf) to estimate a interval of convergence. The following equation
 approximates the number of message (`m`) needed to update all but `s` proportion of the cluster:
 
 <p align="middle">
-<br>
-<img src="https://render.githubusercontent.com/render/math?math=m \approx -N\text{log}s" height="30px" alt="latex eq" >
-</p> 
+    <br>
+    <img src="https://render.githubusercontent.com/render/math?math=m \approx -N\text{log}s" height="30px"
+         alt="latex eq">
+</p>
 
 This equation shows that the convergence interval is directly dependent on:
 
@@ -427,20 +423,38 @@ This equation shows that the convergence interval is directly dependent on:
 4. The frequency at which infected nodes can send `m` update messages.
 
 Aspen will tune these parameters to experimentally determine a suitable estimate for the interval of convergence. Future
-iterations will likely involve a more complex, mathematically driven approach. 
+iterations will likely involve a more complex, mathematically driven approach.
 
 Once we've determined a suitable interval, we can them move on to the GC process itself.
 
 An update log for a particular key is replaced every time the key is updated (i.e. the version is incremented). We can
 store a timestamp along with the set metadata. If the duration between the timestamp and GC is greater than the convergence
 interval, we can remove the update from persisted storage. The same process applies for both set operations
-and delete tombstones. 
+and delete tombstones.
 
 ### Recovery Constant
 
-### Range Replication and Lease Transfer
+The same convergence interval approximation can be used for determining how quickly to recover an operation from gossip.
+Aspen will use a variable redundant gossip threshold to determine whether to recover an operation. This means that a
+node must gossip and receive feedback on an operation at least `N` times before being recovered.
+
+For smaller clusters, this threshold can stay fixed, but for larger clusters, we must use a variable threshold that scales
+along with the interval of convergence for the cluster. We're leaving this out of the scope of this RFC, as it isn't
+necessary for a minimum viable implementation.
 
 ## Failure Detection
+
+Failure detection (FD) algorithms are essential for building robust distributed systems. They're also very challenging to implement.
+While this RFC lays the groundwork for adding FD, it does not explicitly implement any processes.
+
+One of the most relevant elements of the FD mechanism design is providing an interface that can notify a consumer when
+a node fails. Aspen uses an observable copy-on-read store to accomplish this. When a cluster receives a state change update,
+Aspen will diff the old and new states, notifying an subscribers of the change.
+
+As far as future implementation goes, the high level plan follows theory laid out in
+["SWIM: Scalable Weakly-consistent Infection-style Process Group Membership Protocol"](https://ieeexplore.ieee.org/document/1028914).
+This involves piggybacking on layer 1 cluster gossip to mark nodes as susceptible or failed. This is the same strategy
+that hashicorp's `memberlist` uses. Detailed designs are left for future RFCs.
 
 ## Failure Recovery
 
