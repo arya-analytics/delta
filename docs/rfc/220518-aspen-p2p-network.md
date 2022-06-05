@@ -534,7 +534,7 @@ hw := HighWaterMarks{1: {Mark: version.Counter(1), WAL: []version.Counter{3}}}
 After node 3 receives operation 2, the high water marks can be updated:
 
 ```go
-hw := HighWaterMarks{1: {Mark: version.Counter(3), WAL: []version.Counter{}}
+hw := HighWaterMarks{1: {Mark: version.Counter(3), WAL: []version.Counter{}}}
 ```
 
 Now that we've defined what a high water mark is, we can see how they help in making our key-value failure recovery system
