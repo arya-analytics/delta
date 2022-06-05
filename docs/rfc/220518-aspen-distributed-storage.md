@@ -6,8 +6,6 @@
 **Authors**: emilbon99 \
 **Jira Issue** - [DA-153 - [Aspen] - RFC](https://arya-analytics.atlassian.net/browse/DA-153)
 
-# Table of Contents
-
 # Summary
 
 In this RFC I propose an architecture for a gossip based network that can meet Delta's distributed storage and cluster
