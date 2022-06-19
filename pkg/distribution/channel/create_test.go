@@ -12,14 +12,14 @@ import (
 	"go.uber.org/zap"
 )
 
-var _ = Describe("Create", func() {
+var _ = Describe("Create", Ordered, func() {
 	var (
 		services  map[aspen.NodeID]*channel.Service
 		aspenDBs  map[aspen.NodeID]aspen.DB
 		cesiumDBs map[aspen.NodeID]cesium.DB
 		log       *zap.Logger
 	)
-	BeforeEach(func() {
+	BeforeAll(func() {
 		log = zap.NewNop()
 		services = make(map[aspen.NodeID]*channel.Service)
 		aspenDBs = make(map[aspen.NodeID]aspen.DB)
@@ -42,52 +42,70 @@ var _ = Describe("Create", func() {
 		cesiumDBs[db2.HostID()] = cdb2
 		services[db2.HostID()] = channel.New(db2, gorp.Wrap(db2), cdb2, net.Route(""))
 	})
-	Context("Node is local", func() {
-		It("Should create the channel without error", func() {
-			ch, err := services[1].NewCreate().
+	Context("Single Channel", func() {
+		var (
+			channelLeaseNodeID aspen.NodeID
+			ch                 channel.Channel
+		)
+		JustBeforeEach(func() {
+			var err error
+			ch, err = services[1].NewCreate().
 				WithDataRate(5 * cesium.Hz).
 				WithDataType(cesium.Float64).
 				WithName("SG01").
-				WithNodeID(1).
+				WithNodeID(channelLeaseNodeID).
 				Exec(ctx)
-			Expect(err).To(BeNil())
-			Expect(ch.Key().NodeID()).To(Equal(aspen.NodeID(1)))
-			Expect(ch.Key().CesiumKey()).To(Equal(cesium.ChannelKey(1)))
+			Expect(err).ToNot(HaveOccurred())
 		})
-	})
-	Context("Node is remote", func() {
-		It("Should create the channel without error", func() {
-			ch, err := services[1].NewCreate().
-				WithDataRate(5 * cesium.Hz).
-				WithDataType(cesium.Float64).
-				WithName("SG01").
-				WithNodeID(2).
-				Exec(ctx)
-			Expect(err).To(BeNil())
-			Expect(ch.Key().NodeID()).To(Equal(aspen.NodeID(2)))
-			Expect(ch.Key().CesiumKey()).To(Equal(cesium.ChannelKey(1)))
-		})
-		It("Should assign a cesium key of 1 to the first channels on each node",
-			func() {
-				ch, err := services[1].NewCreate().
-					WithDataRate(5 * cesium.Hz).
-					WithDataType(cesium.Float64).
-					WithName("SG01").
-					WithNodeID(1).
-					Exec(ctx)
-				Expect(err).To(BeNil())
+		Context("Node is local", func() {
+			BeforeEach(func() { channelLeaseNodeID = 1 })
+			It("Should create the channel without error", func() {
 				Expect(ch.Key().NodeID()).To(Equal(aspen.NodeID(1)))
 				Expect(ch.Key().CesiumKey()).To(Equal(cesium.ChannelKey(1)))
-				ch2, err := services[1].NewCreate().
-					WithDataRate(5 * cesium.Hz).
-					WithDataType(cesium.Float64).
-					WithName("SG01").
-					WithNodeID(2).
-					Exec(ctx)
-				Expect(err).To(BeNil())
-				Expect(ch2.Key().NodeID()).To(Equal(aspen.NodeID(2)))
-				Expect(ch2.Key().CesiumKey()).To(Equal(cesium.ChannelKey(1)))
-
 			})
+			It("Should create the channel in the cesium DB", func() {
+				channels, err := cesiumDBs[1].RetrieveChannel(ch.Key().CesiumKey())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(channels).To(HaveLen(1))
+				cesiumCH := channels[0]
+				Expect(cesiumCH.Key).To(Equal(ch.Key().CesiumKey()))
+				Expect(cesiumCH.DataType).To(Equal(cesium.Float64))
+				Expect(cesiumCH.DataRate).To(Equal(5 * cesium.Hz))
+			})
+		})
+		Context("Node is remote", func() {
+			BeforeEach(func() { channelLeaseNodeID = 2 })
+			It("Should create the channel without error", func() {
+				Expect(ch.Key().NodeID()).To(Equal(aspen.NodeID(2)))
+				Expect(ch.Key().CesiumKey()).To(Equal(cesium.ChannelKey(1)))
+			})
+			It("Should create the channel in the cesium DB", func() {
+				channels, err := cesiumDBs[2].RetrieveChannel(ch.Key().CesiumKey())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(channels).To(HaveLen(1))
+				cesiumCH := channels[0]
+				Expect(cesiumCH.Key).To(Equal(ch.Key().CesiumKey()))
+				Expect(cesiumCH.DataType).To(Equal(cesium.Float64))
+				Expect(cesiumCH.DataRate).To(Equal(5 * cesium.Hz))
+			})
+			It("Should not create the channel on another node's ceisum DB", func() {
+				channels, err := cesiumDBs[1].RetrieveChannel(ch.Key().CesiumKey())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(channels).To(HaveLen(0))
+			})
+			It("Should assign a sequential key to the channels on each node",
+				func() {
+					ch2, err := services[1].NewCreate().
+						WithDataRate(5 * cesium.Hz).
+						WithDataType(cesium.Float64).
+						WithName("SG01").
+						WithNodeID(1).
+						Exec(ctx)
+					Expect(err).To(BeNil())
+					Expect(ch2.Key().NodeID()).To(Equal(aspen.NodeID(1)))
+					Expect(ch2.Key().CesiumKey()).To(Equal(cesium.ChannelKey(3)))
+				})
+		})
+
 	})
 })
