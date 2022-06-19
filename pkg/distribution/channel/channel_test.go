@@ -10,16 +10,19 @@ import (
 
 var _ = Describe("Channel", func() {
 	Describe("Key", func() {
-		It("Should return the correct channel key", func() {
-			c := channel.Channel{
-				NodeID: 1,
-				Cesium: cesium.Channel{
-					Key: 2,
-				},
-			}
-			key := c.Key()
-			Expect(key.NodeID()).To(Equal(aspen.NodeID(1)))
-			Expect(key.ChannelKey()).To(Equal(cesium.ChannelKey(2)))
+		var key channel.Key
+		BeforeEach(func() {
+			key = channel.NewKey(1, 2)
+		})
+		Describe("NodeID", func() {
+			It("Should return the correct node ID for the channel", func() {
+				Expect(key.NodeID()).To(Equal(aspen.NodeID(1)))
+			})
+		})
+		Describe("CesiumKey", func() {
+			It("Should return the correct cesium key for the channel", func() {
+				Expect(key.CesiumKey()).To(Equal(cesium.ChannelKey(2)))
+			})
 		})
 	})
 })

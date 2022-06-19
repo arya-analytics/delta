@@ -13,6 +13,10 @@ type Create struct {
 	proxy *leaseProxy
 }
 
+func newCreate(proxy *leaseProxy) Create {
+	return Create{Query: query.New(), proxy: proxy}
+}
+
 func (c Create) WithNodeID(nodeID aspen.NodeID) Create { setLease(c, nodeID); return c }
 
 func (c Create) WithName(name string) Create { setName(c, name); return c }

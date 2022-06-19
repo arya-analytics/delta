@@ -12,13 +12,20 @@ import (
 // identifier for the channel on the node's cesium.DB.
 type Key [6]byte
 
+// NewKey generates a new Key from the provided components.
+func NewKey(nodeID aspen.NodeID, cesiumKey cesium.ChannelKey) (key Key) {
+	binary.LittleEndian.PutUint32(key[0:4], uint32(nodeID))
+	binary.LittleEndian.PutUint16(key[4:6], uint16(cesiumKey))
+	return key
+}
+
 // NodeID returns the id of the node embedded in the key. This node is the leaseholder
 // node for the Channel.
 func (c Key) NodeID() aspen.NodeID { return aspen.NodeID(binary.LittleEndian.Uint32(c[0:4])) }
 
-// ChannelKey returns a unique identifier for the Channel within the leaseholder node's
+// CesiumKey returns a unique identifier for the Channel within the leaseholder node's
 // cesium.DB. This value is NOT guaranteed tobe unique across the entire cluster.
-func (c Key) ChannelKey() cesium.ChannelKey {
+func (c Key) CesiumKey() cesium.ChannelKey {
 	return cesium.ChannelKey(binary.LittleEndian.Uint16(c[4:6]))
 }
 
@@ -29,12 +36,7 @@ type Channel struct {
 }
 
 // Key returns the key for the Channel.
-func (c Channel) Key() Key {
-	var b [6]byte
-	binary.LittleEndian.PutUint32(b[0:4], uint32(c.NodeID))
-	binary.LittleEndian.PutUint16(b[4:6], uint16(c.Cesium.Key))
-	return b
-}
+func (c Channel) Key() Key { return NewKey(c.NodeID, c.Cesium.Key) }
 
 // GorpKey implements the gorp.Entry interface.
 func (c Channel) GorpKey() Key { return c.Key() }

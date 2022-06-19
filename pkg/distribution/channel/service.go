@@ -27,7 +27,7 @@ func New(
 	return s
 }
 
-func (s *Service) NewCreate() Create { return Create{proxy: s.proxy} }
+func (s *Service) NewCreate() Create { return newCreate(s.proxy) }
 
 func (s *Service) Resolve(key Key) (address.Address, error) {
 	return s.resolver.Resolve(key)
