@@ -69,6 +69,13 @@ billions of rows is a massive waste of cpu time).
 The above example is extreme, but still outlines the value of performing aggregations 
 closer to the data source in order to reduce the amount of information transferred OTN.
 
+Delta falls into a category that blends the lines between a data warehouse and a 
+traditional OLTP database. On the one hand, aggregations are very common (i.e. maximum
+value for a sensor over a particular time-range). On the other hand, it's typical for a
+user to retrieve massive amounts of raw time-series data for advanced computing 
+(such as signal processing). The first pattern lends itself well to a decoupled 
+architecture, while the second benefits greatly from reducing the amount of network 
+hops.
 
 ## Design
 
