@@ -27,7 +27,7 @@ var _ = Describe("Channel", func() {
 		})
 	})
 	Describe("Encoding + Decoding", func() {
-		FIt("Should encode and decode a channel correctly", func() {
+		It("Should encode and decode a channel correctly", func() {
 			ch := channel.Channel{
 				NodeID: 1,
 				Cesium: cesium.Channel{

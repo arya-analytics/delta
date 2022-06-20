@@ -43,7 +43,7 @@ var _ = Describe("Retrieve", Ordered, func() {
 		cesiumDBs[db2.HostID()] = cdb2
 		services[db2.HostID()] = channel.New(db2, gorp.Wrap(db2), cdb2, net.Route(""))
 	})
-	FIt("Should correctly retrieve a set of channels", func() {
+	It("Should correctly retrieve a set of channels", func() {
 		created, err := services[1].NewCreate().
 			WithName("SG02").
 			WithDataRate(25*cesium.KHz).
@@ -52,21 +52,17 @@ var _ = Describe("Retrieve", Ordered, func() {
 			ExecN(ctx, 10)
 		Expect(err).ToNot(HaveOccurred())
 
-		//var resChannels []channel.Channel
+		var resChannels []channel.Channel
 
-		//err = services[1].
-		//	NewRetrieve().
-		//	WhereNodeID(1).
-		//	Entries(&resChannels).
-		//	Exec(ctx)
-		//Expect(err).ToNot(HaveOccurred())
-		//Expect(resChannels).To(HaveLen(len(created)))
-		//
-		//for _, channel := range resChannels {
-		//	logrus.Warn(channel)
-		//}
+		err = services[1].
+			NewRetrieve().
+			WhereNodeID(1).
+			Entries(&resChannels).
+			Exec(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resChannels).To(HaveLen(len(created)))
 
-		time.Sleep(150 * time.Millisecond)
+		time.Sleep(60 * time.Millisecond)
 
 		var resChannelsTwo []channel.Channel
 
