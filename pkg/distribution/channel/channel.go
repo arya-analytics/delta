@@ -44,6 +44,9 @@ func (c Channel) Key() Key { return NewKey(c.NodeID, c.Cesium.Key) }
 // GorpKey implements the gorp.Entry interface.
 func (c Channel) GorpKey() Key { return c.Key() }
 
+// SetOptions implements the gorp.Entry interface. Returns a set of options that
+// tell an aspen.DB to properly lease the Channel to the node it will be recording data
+// from.
 func (c Channel) SetOptions() []interface{} { return []interface{}{c.Lease()} }
 
 // Lease implements the proxy.Route interface.

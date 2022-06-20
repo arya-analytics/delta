@@ -62,6 +62,7 @@ var _ = Describe("Retrieve", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resChannels).To(HaveLen(len(created)))
 
+		// Wait for the operations to propagate to another node.
 		time.Sleep(60 * time.Millisecond)
 
 		var resChannelsTwo []channel.Channel
