@@ -29,6 +29,8 @@ func New(
 
 func (s *Service) NewCreate() Create { return newCreate(s.proxy) }
 
+func (s *Service) NewRetrieve() Retrieve { return newRetrieve(s.metadataDB) }
+
 func (s *Service) Resolve(key Key) (address.Address, error) {
 	return s.resolver.Resolve(key)
 }

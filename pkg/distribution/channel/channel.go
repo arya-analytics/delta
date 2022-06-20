@@ -29,6 +29,9 @@ func (c Key) CesiumKey() cesium.ChannelKey {
 	return cesium.ChannelKey(binary.LittleEndian.Uint16(c[4:6]))
 }
 
+// Lease implements the proxy.Route interface.
+func (c Key) Lease() aspen.NodeID { return c.NodeID() }
+
 type Channel struct {
 	Name   string
 	NodeID aspen.NodeID
@@ -41,4 +44,7 @@ func (c Channel) Key() Key { return NewKey(c.NodeID, c.Cesium.Key) }
 // GorpKey implements the gorp.Entry interface.
 func (c Channel) GorpKey() Key { return c.Key() }
 
-func (c Channel) SetOptions() []interface{} { return []interface{}{c.NodeID} }
+func (c Channel) SetOptions() []interface{} { return []interface{}{c.Lease()} }
+
+// Lease implements the proxy.Route interface.
+func (c Channel) Lease() aspen.NodeID { return c.NodeID }

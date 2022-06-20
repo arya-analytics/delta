@@ -17,7 +17,7 @@ func newCreate(proxy *leaseProxy) Create {
 	return Create{Query: query.New(), proxy: proxy}
 }
 
-func (c Create) WithNodeID(nodeID aspen.NodeID) Create { setLease(c, nodeID); return c }
+func (c Create) WithNodeID(nodeID aspen.NodeID) Create { setNodeID(c, nodeID); return c }
 
 func (c Create) WithName(name string) Create { setName(c, name); return c }
 
@@ -52,11 +52,11 @@ func assembleFromQuery(q query.Query, n int) ([]Channel, error) {
 		return channels, err
 	}
 	name := getName(q)
-	lease := getLease(q)
+	nodeID := getNodeID(q)
 	for i := 0; i < n; i++ {
 		channels[i] = Channel{
 			Name:   name,
-			NodeID: lease,
+			NodeID: nodeID,
 			Cesium: cesium.Channel{DataRate: dr, DataType: dt},
 		}
 	}
@@ -65,12 +65,12 @@ func assembleFromQuery(q query.Query, n int) ([]Channel, error) {
 
 // |||||| LEASE ||||||
 
-const leaseKey query.OptionKey = "lease"
+const nodeIDKey query.OptionKey = "nodeID"
 
-func setLease(q query.Query, nodeID aspen.NodeID) { q.Set(leaseKey, nodeID) }
+func setNodeID(q query.Query, nodeID aspen.NodeID) { q.Set(nodeIDKey, nodeID) }
 
-func getLease(q query.Query) aspen.NodeID {
-	if v, ok := q.Get(leaseKey); ok {
+func getNodeID(q query.Query) aspen.NodeID {
+	if v, ok := q.Get(nodeIDKey); ok {
 		return v.(aspen.NodeID)
 	}
 	return 0
