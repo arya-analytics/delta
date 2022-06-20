@@ -29,42 +29,48 @@ action. \
 
 # Motivation
 
-This RFC is largely driven by the lack of a distributed key-value store that meets Delta's needs. The ACID demands of
-OLTP databases would typically require that they fail rather than risk data loss. This is generally a good idea for
-use cases such as finance, but can be potentially disastrous in hardware control systems.
+This RFC is largely driven by the lack of a distributed key-value store that meets Delta's 
+needs. The ACID demands of  OLTP databases typically require that they fail rather 
+than risk data loss. This is an ideal property where data integrity is an absolute 
+requirement (such as financial transactions), but can be disastrous in hardware 
+control systems.
 
-Consider a set of redlines that execute when a node loses connection. Upon losing communication with the rest of the
-cluster,
-an ACID compliant distributed database would stop serving reads and writes in order to preserve data integrity. This
-could hinder a nodes' ability to shut down the system safely. In extreme scenarios, such as launch control systems, this
-can result in the loss of a vehicle or even a life.
+Consider a set of redlines that execute when a node loses connection. Upon losing 
+communication with the rest of the cluster, an ACID compliant distributed database 
+would stop serving reads and writes in order to preserve data integrity. This
+could hinder a nodes' ability to shut down the system safely. In extreme scenarios, 
+such as launch control systems, this can result in the loss of a vehicle or even a life.
 
-In short, Delta requires a distributed data store capable of servicing queries even when the rest of the cluster is
-unreachable.
+Delta requires a distributed data store capable of servicing queries even 
+when the rest of the cluster is unreachable.
 
 # Design
 
-Aspens design consists of two gossip layers:
+Aspen's design consists of two gossip layers:
 
 1. Layer 1 - Uses a Susceptible-Infected (SI) model to spread cluster state in a fashion
-resembling [Apache Cassandra](https://cassandra.apache.org/_/index.html). All nodes gossip their version of state at
-a regular interval. This is used to disseminate information about cluster membership and node health. This
-includes reporting information about failed or suspected nodes
+resembling [Apache Cassandra](https://cassandra.apache.org/_/index.html). All nodes 
+gossip their version of state at a regular interval. This is used to disseminate 
+information about cluster membership and node health. This includes reporting information 
+about failed or suspected nodes
 
-2. Layer 2 - Uses a Susceptible-Infected-Recovered (SIR) model to propagate key-value sets and deletes in an eventually
-consistent manner. After receiving a set operation, the node will gossip the key-value pair to all other nodes until
-a certain number of redundant conversations (i.e. the node already received the update) have occurred.
+2. Layer 2 - Uses a Susceptible-Infected-Recovered (SIR) model to propagate key-value 
+sets and deletes in an eventually consistent manner. After receiving a set operation, 
+the node will gossip the key-value pair to all other nodes until a certain number of 
+redundant conversations (i.e. the node already received the update) have occurred.
 
 ## Cluster State Synchronization
 
-Delta aims to provide dynamic cluster membership. This is more difficult to accomplish if each node is required to
-know about *all* other nodes in the cluster before being initialized. This is the approach taken
-by [etcd](https://etcd.io/).
-By using a gossip based network, Delta can provide a cluster membership system that is dynamic and resilient to failure.
+Delta aims to provide dynamic cluster membership. This is more difficult to accomplish 
+if each node is required to know about *all* other nodes in the cluster before being 
+initialized. This is the approach taken by [etcd](https://etcd.io/).
+By using a gossip based network, Delta can provide a cluster membership system 
+that is dynamic and resilient to failure.
 
-This cluster membership and state gossip is considered Layer 1. Layer 1 is implemented using a Susceptible-Infected (SI)
-model. In an SI gossip model, nodes never stop spreading a message. This means quite a bit of network message
-amplification but is useful when it comes to failure detection and membership.
+This cluster membership and state gossip is considered Layer 1. Layer 1 is implemented 
+using a Susceptible-Infected (SI) model. In an SI gossip model, nodes never stop 
+spreading a message. This means quite a bit of network message
+amplification, but is useful when it comes to failure detection and membership.
 
 ### Cluster State Data Structure
 
