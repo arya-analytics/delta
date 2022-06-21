@@ -85,35 +85,53 @@ hops.
 
 This RFC attempts to reconcile these two workloads by providing an architecture
 that separates the algorithms/components for storing data from those who perform
-aggregations/computations on it. Defining clear requirements and interfaces for the 
-distribution layer is essential to the success of this reconciliation. What are the 
+aggregations/computations on it. Defining clear requirements and interfaces for the
+distribution layer is essential to the success of this reconciliation. What are the
 algorithms in the distribution layer responsible for? Should we provide rudimentary
 support for aggregations? Should we make the caller aware of the underlying network
-topology to enable optimization? Or should we make it a completely black box?  The
-following sections reason about and propose an architecture that answers these 
+topology to enable optimization? Or should we make it a completely black box? The
+following sections reason about and propose an architecture that answers these
 questions.
 
 ## Design
 
+The proposed distribution layer (DL) architecture will expose cluster storage as a 
+monolithic data space that provides *optional* locality context to caller. A user can 
+read and write data from the DL as a black box without any knowledge of the underlying 
+cluster topology, but can also ask for additional context to perform optimizations
+within its own layer/domain.
+
+This is a similar approach to CockroachDB's separation between their
+[Distributed SQL](https://github.com/cockroachdb/cockroach/blob/master/docs/RFCS/20160421_distributed_sql.md)
+and key-value layers. When executing a query, the SQL layer can turn a logical plan
+into a physical plan that executes on a single machine, performing unaware reads and 
+writes from the distributed kv layer below. It can, however, also construct a physical
+plan that moves aggregation logic to the SQL layer's of *other* machines in the 
+cluster. This distributed physical plan can perform aggregations on nodes where the
+data is stored, and then return a much smaller result OTN back to the SQL layer of the 
+responsible node.
+
+Delta's distribution layer plays a similar role to the key-value layer in CRDB. It's 
+main focus, however, will be to serve time-series segments instead of key-value pairs.
+
 ### Principles
 
-**Computation and Aggregation** - The distribution layer contains no computation or 
-aggregation logic. Its focus is completely on serving raw segments reads and writes 
-efficiently. 
+**Computation and Aggregation** - DL contains no computation or
+aggregation logic. Its focus is completely on serving raw segments reads and writes
+efficiently.
 
-**Network Awareness** - The distribution layer's interface does *not* require the 
-caller to be aware of data locality or underlying network topology. The distribution 
-layer provides optional context to the caller if they want to implement optimizations 
-themselves. 
+**Network Awareness** - DL's interface does *not* require the
+caller to be aware of data locality or underlying network topology. The distribution
+layer provides optional context to the caller if they want to implement optimizations
+themselves.
 
 **Layer Boundary** - Services/domains that do *not* require custom distribution logic
-do not have any components within the distribution layer.
+do not have any components within DL.
 
-**Domain Oriented** - The distribution layer does not expose a single facade as its
-interface. Instead, it is composed of a set of domain-separated services that rely
-on common distribution logic.
+**Domain Oriented** - DL does not expose a single facade as its interface. Instead,
+it composes a set of domain-separated services that rely on common distribution logic.
 
-**Generic** - The distribution layer only supports rudimentary, low-level queries in a
-similar fashion to a key-value store. It should not provide any support for specific
-data types or specialty queries.
+**Generic** - DL only supports rudimentary, low-level queries in a similar fashion to
+a key-value store. It should not provide any support for specific data types or
+specialty queries.
 
