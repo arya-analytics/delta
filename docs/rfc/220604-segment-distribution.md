@@ -111,8 +111,14 @@ cluster. This distributed physical plan can perform aggregations on nodes where 
 data is stored, and then return a much smaller result OTN back to the SQL layer of the 
 responsible node.
 
-Delta's distribution layer plays a similar role to the key-value layer in CRDB. It's 
+Delta's distribution layer plays a similar role to the key-value layer in CRDB. Its 
 main focus, however, will be to serve time-series segments instead of key-value pairs.
+Layers above the DL will do the heavy lifting of generating and executing a physical
+plan for a particular query. Parsing a physical plan that can be distributed 
+across multiple nodes is by no means an easy task. CockroachDB was already several
+years old before the development team began to implement these optimizations.
+By providing topology abstraction in the distribution layer, we enable a simple path
+forward to a Delta MVP while laying the groundwork for distributed optimizations.
 
 ### Principles
 
@@ -135,3 +141,4 @@ it composes a set of domain-separated services that rely on common distribution 
 a key-value store. It should not provide any support for specific data types or
 specialty queries.
 
+### Distributed Physical Plans
