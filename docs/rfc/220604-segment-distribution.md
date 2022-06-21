@@ -41,14 +41,13 @@ that can modify the data. \
 **Data Warehouse (DWH)** - A system used for storing and reporting data for analysis
 and business intelligence purposes. Data warehouses typically involve long-running
 queries on much larger data sets than typical OLTP systems. Data warehouse queries
-fall into the OLAP category of workloads.
+fall into the OLAP category of workloads. \
 **OTN** - Over the Network.
 
 # Motivation
 
 Separating storage and compute has become a popular technique for scaling data
-intensive systems (
-see [The Firebolt Cloud Data Warehouse Whitepaper](https://www.firebolt.io/resources/firebolt-cloud-data-warehouse-whitepaper))
+intensive systems (see [The Firebolt Cloud Data Warehouse Whitepaper](https://www.firebolt.io/resources/firebolt-cloud-data-warehouse-whitepaper))
 .
 This decoupling is a double-edged sword. Processing engines and storage layers can scale
 independently, allowing the data warehouse to flexibly scale to meet the needs of its
@@ -95,7 +94,7 @@ questions.
 
 # Design
 
-The proposed distribution layer (DL) architecture will expose cluster storage as a
+The proposed distribution layer (DL) architecture exposes cluster storage as a
 monolithic data space that provides *optional* locality context to caller. A user can
 read and write data from the DL as a black box without any knowledge of the underlying
 cluster topology, but can also ask for additional context to perform optimizations
@@ -106,7 +105,7 @@ This is a similar approach to CockroachDB's separation between their
 and key-value layers. When executing a query, the SQL layer can turn a logical plan
 into a physical plan that executes on a single machine, performing unaware reads and
 writes from the distributed kv layer below. It can, however, also construct a physical
-plan that moves aggregation logic to the SQL layer's of *other* machines in the
+plan that moves aggregation logic to the SQL layers' of *other* machines in the
 cluster. This distributed physical plan can perform aggregations on nodes where the
 data is stored, and then return a much smaller result OTN back to the SQL layer of the
 responsible node.
@@ -155,6 +154,11 @@ database(s) for reading and writing time-series data from disk. Because the
 distribution layer uses multiple storage engines, there's a certain amount of overlap
 and data reconciliation that must be performed in order to ensure that information 
 stays consistent (this is particularly relevant for [channels](#Channels)).
+
+<p align="middle">
+<img src="images/220604-segment-distribution/distributed-storage-high-level.png"width="80%">
+<h5 align="middle">Distributed Storage Architecture</h5>
+</p>
 
 
 ### Aspen
