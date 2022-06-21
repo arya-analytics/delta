@@ -3,7 +3,8 @@
 **Feature Name**: Delta - Segment Distribution \
 **Status**: Proposed \
 **Start Data**: 2022-06-04 \
-**Jira Issue** [DA-154- [Delta & Cesium] - Segment Architecture](https://arya-analytics.atlassian.net/browse/DA-154)
+**Jira
+Issue** [DA-154- [Delta & Cesium] - Segment Architecture](https://arya-analytics.atlassian.net/browse/DA-154)
 
 # Table of Contents
 
@@ -14,7 +15,8 @@ monolithic data space. This proposal focuses on serving simple, range-based quer
 an efficient manner while laying the foundations for data replication and transfer
 across the cluster.
 
-Defining a clear level of abstraction for the data space is challenging. The distribution
+Defining a clear level of abstraction for the data space is challenging. The
+distribution
 layer must maintain adequate low level control to support distributed aggregation,
 but must also minimize complexity (in terms of locality and networking) for the layers
 above.
@@ -33,7 +35,8 @@ layers).
 **Segment** - A partitioned region of a channel's data. \
 **Node** - A machine in the cluster. \
 **Cluster** - A group of nodes that can communicate with each other. \
-**Leaseholder** - A node that holds a lease on a particular piece of data. The leaseholder is the only node
+**Leaseholder** - A node that holds a lease on a particular piece of data. The
+leaseholder is the only node
 that can modify the data. \
 **Data Warehouse (DWH)** - A system used for storing and reporting data for analysis
 and business intelligence purposes. Data warehouses typically involve long-running
@@ -44,38 +47,73 @@ fall into the OLAP category of workloads.
 ## Motivation
 
 Separating storage and compute has become a popular technique for scaling data
-intensive systems (see [The Firebolt Cloud Data Warehouse Whitepaper](https://www.firebolt.io/resources/firebolt-cloud-data-warehouse-whitepaper)).
+intensive systems (
+see [The Firebolt Cloud Data Warehouse Whitepaper](https://www.firebolt.io/resources/firebolt-cloud-data-warehouse-whitepaper))
+.
 This decoupling is a double-edged sword. Processing engines and storage layers can scale
-independently, allowing the data warehouse to flexibly scale to meet the needs of its 
-users. However, processing engines must now retrieve data from storage OTN, which is 
-a costly operation that can cause problems when retrieving 
-large datasets. 
+independently, allowing the data warehouse to flexibly scale to meet the needs of its
+users. However, processing engines must now retrieve data from storage OTN, which is
+a costly operation that can cause problems when retrieving
+large datasets.
 
-The simplest way to solve this problem is by reducing the amount of data a processing 
-engine must retrieve OTN from the storage layer. This idea, while obvious, is 
-challenging to implement. 
+The simplest way to solve this problem is by reducing the amount of data a processing
+engine must retrieve OTN from the storage layer. This idea, while obvious, is
+challenging to implement.
 
-DWH queries typically perform aggregations on large spans of data, returning a small 
-value (such as an average, sum, or count to the caller). To serve a count over one 
-billion rows, a warehouse would need to retrieve massive amounts of data over the
-network from storage, compute the count, and then return the value. To reduce network 
-traffic, a DWH can pre-compute a set of materialized indexes and aggregations (i.e.
-pre-calculate a generalized count for common query patterns). A network trip that 
+DWH queries typically perform aggregations on large spans of data, returning a small
+value (such as an average, sum, or count to the caller). To serve a count over one
+billion rows, a warehouse would need to retrieve massive amounts of data from storage,
+compute the count, and then return the value. To reduce network traffic, a DWH can
+pre-compute a set of materialized indexes and aggregations (i.e. pre-calculate a
+generalized
+count for common query patterns). A network trip that
 once required hundreds of gigabytes of data may now require only a few hundred bytes.
-Pre-aggregation is expensive, and the challenge comes in determining the most *useful* 
-aggregations for a particular data set (constantly computing an un-queried average on 
-billions of rows is a massive waste of cpu time).
+Pre-aggregation is expensive, and the challenge comes in determining the most *useful*
+aggregations for a particular data set (constantly computing an un-queried average on
+billions of rows is a massive waste of CPU time).
 
-The above example is extreme, but still outlines the value of performing aggregations 
+The above example is extreme, but still outlines the value of performing aggregations
 closer to the data source in order to reduce the amount of information transferred OTN.
 
-Delta falls into a category that blends the lines between a data warehouse and a 
+Delta falls into a category that blends the lines between a data warehouse and a
 traditional OLTP database. On the one hand, aggregations are very common (i.e. maximum
 value for a sensor over a particular time-range). On the other hand, it's typical for a
-user to retrieve massive amounts of raw time-series data for advanced computing 
-(such as signal processing). The first pattern lends itself well to a decoupled 
-architecture, while the second benefits greatly from reducing the amount of network 
+user to retrieve massive amounts of raw time-series data for advanced computing
+(such as signal processing). The first pattern lends itself well to a decoupled
+architecture, while the second benefits greatly from reducing the amount of network
 hops.
 
+This RFC attempts to reconcile these two workloads by providing an architecture
+that separates the algorithms/components for storing data from those who perform
+aggregations/computations on it. Defining clear requirements and interfaces for the 
+distribution layer is essential to the success of this reconciliation. What are the 
+algorithms in the distribution layer responsible for? Should we provide rudimentary
+support for aggregations? Should we make the caller aware of the underlying network
+topology to enable optimization? Or should we make it a completely black box?  The
+following sections reason about and propose an architecture that answers these 
+questions.
+
 ## Design
+
+### Principles
+
+**Computation and Aggregation** - The distribution layer contains no computation or 
+aggregation logic. Its focus is completely on serving raw segments reads and writes 
+efficiently. 
+
+**Network Awareness** - The distribution layer's interface does *not* require the 
+caller to be aware of data locality or underlying network topology. The distribution 
+layer provides optional context to the caller if they want to implement optimizations 
+themselves. 
+
+**Layer Boundary** - Services/domains that do *not* require custom distribution logic
+do not have any components within the distribution layer.
+
+**Domain Oriented** - The distribution layer does not expose a single facade as its
+interface. Instead, it is composed of a set of domain-separated services that rely
+on common distribution logic.
+
+**Generic** - The distribution layer only supports rudimentary, low-level queries in a
+similar fashion to a key-value store. It should not provide any support for specific
+data types or specialty queries.
 
