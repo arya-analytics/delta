@@ -3,10 +3,7 @@
 **Feature Name**: Delta - Segment Distribution \
 **Status**: Proposed \
 **Start Data**: 2022-06-04 \
-**Jira
-Issue** [DA-154- [Delta & Cesium] - Segment Architecture](https://arya-analytics.atlassian.net/browse/DA-154)
-
-# Table of Contents
+**Jira Issue**: [DA-154- [Delta & Cesium] - Segment Architecture](https://arya-analytics.atlassian.net/browse/DA-154)
 
 # Summary
 
