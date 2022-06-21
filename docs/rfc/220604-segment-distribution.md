@@ -28,7 +28,7 @@ additional context if the caller wants to perform network optimization themselve
 is a similar approach to the one taken by CockroachDB between their transaction and SQl
 layers).
 
-## Vocabulary
+# Vocabulary
 
 **Sample** - An arbitrary byte array recorded at a specific point in time. \
 **Channel** - A collection of samples across a time range. \
@@ -44,7 +44,7 @@ queries on much larger data sets than typical OLTP systems. Data warehouse queri
 fall into the OLAP category of workloads.
 **OTN** - Over the Network.
 
-## Motivation
+# Motivation
 
 Separating storage and compute has become a popular technique for scaling data
 intensive systems (
@@ -93,34 +93,34 @@ topology to enable optimization? Or should we make it a completely black box? Th
 following sections reason about and propose an architecture that answers these
 questions.
 
-## Design
+# Design
 
-The proposed distribution layer (DL) architecture will expose cluster storage as a 
-monolithic data space that provides *optional* locality context to caller. A user can 
-read and write data from the DL as a black box without any knowledge of the underlying 
+The proposed distribution layer (DL) architecture will expose cluster storage as a
+monolithic data space that provides *optional* locality context to caller. A user can
+read and write data from the DL as a black box without any knowledge of the underlying
 cluster topology, but can also ask for additional context to perform optimizations
 within its own layer/domain.
 
 This is a similar approach to CockroachDB's separation between their
 [Distributed SQL](https://github.com/cockroachdb/cockroach/blob/master/docs/RFCS/20160421_distributed_sql.md)
 and key-value layers. When executing a query, the SQL layer can turn a logical plan
-into a physical plan that executes on a single machine, performing unaware reads and 
+into a physical plan that executes on a single machine, performing unaware reads and
 writes from the distributed kv layer below. It can, however, also construct a physical
-plan that moves aggregation logic to the SQL layer's of *other* machines in the 
+plan that moves aggregation logic to the SQL layer's of *other* machines in the
 cluster. This distributed physical plan can perform aggregations on nodes where the
-data is stored, and then return a much smaller result OTN back to the SQL layer of the 
+data is stored, and then return a much smaller result OTN back to the SQL layer of the
 responsible node.
 
-Delta's distribution layer plays a similar role to the key-value layer in CRDB. Its 
+Delta's distribution layer plays a similar role to the key-value layer in CRDB. Its
 main focus, however, will be to serve time-series segments instead of key-value pairs.
 Layers above the DL will do the heavy lifting of generating and executing a physical
-plan for a particular query. Parsing a physical plan that can be distributed 
+plan for a particular query. Parsing a physical plan that can be distributed
 across multiple nodes is by no means an easy task. CockroachDB was already several
 years old before the development team began to implement these optimizations.
 By providing topology abstraction in the distribution layer, we enable a simple path
 forward to a Delta MVP while laying the groundwork for distributed optimizations.
 
-### Principles
+## Principles
 
 **Computation and Aggregation** - DL contains no computation or
 aggregation logic. Its focus is completely on serving raw segments reads and writes
@@ -141,4 +141,81 @@ it composes a set of domain-separated services that rely on common distribution 
 a key-value store. It should not provide any support for specific data types or
 specialty queries.
 
-### Distributed Physical Plans
+**Transport Abstraction** - DL is not partial to a particular network transport
+implementation (GRPC, WS, HTTP, etc.). It's core logic does not interact with any
+specific networking APIs.
+
+## Storage Engine Integration
+
+Delta's distribution layer directly interacts with two storage engines: Cesium and 
+Aspen. DL uses [Aspen](https://github.com/arya-analytics/delta/blob/main/docs/rfc/220518-aspen-distributed-storage.md)
+for querying cluster topology as well as storing distributed key-value data. 
+It uses one or more [Cesium](https://github.com/arya-analytics/delta/blob/main/docs/rfc/220517-cesium-segment-storage.md) 
+database(s) for reading and writing time-series data from disk. Because the 
+distribution layer uses multiple storage engines, there's a certain amount of overlap
+and data reconciliation that must be performed in order to ensure that information 
+stays consistent (this is particularly relevant for [channels](#Channels)).
+
+
+### Aspen
+
+Aspen implements two critical pieces of functionality that the distribution layer 
+depends on. The first is the ability to query the address of a node in the cluster:
+
+```go
+addr, err := aspenDB.Resolve(1)
+```
+
+This query returns the address of the node with an ID of `1`. The DL uses this to 
+determine the location of a channel's lease and its corresponding segment data.
+
+The second piece of functionality is an eventually consistent distributed key-value 
+store. The DL uses aspen to propagate two important pieces of metadata across the 
+cluster:
+
+1. Channels in the cluster (name, key, data rate, leaseholder node, etc.)
+2. Segments for a channel (i.e. what ranges of a channel's data exist on which node).
+
+### Cesium
+
+Cesium is the main time-series storage engine for Delta. Each Cesium database occupies a
+single directory on disk. The distribution layer interacts with Cesium via four APIs:
+
+```go
+// Create a new channel.
+db.CreateChannel()
+// Retrieve a channel.
+db.RetrieveChannel()
+// Write segments.
+db.NewCreate().Exec(ctx)
+// Read segments.
+db.NewRetrieve().Iterate(ctx)
+```
+
+Besides these four interfaces, Delta treats Cesium as a black box.
+
+### Integrity/Reconciliation
+
+## Channels
+
+### Keys
+
+### Query Patterns
+
+### Multi-Data Store Reconciliation
+
+## Segment Reads
+
+### Query Patterns
+
+### Iteration
+
+### Networking Details
+
+## Segment Writes
+
+### Query Patterns
+
+### Networking Details
+
+## Distributed Physical Plans
