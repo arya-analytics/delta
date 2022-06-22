@@ -22,7 +22,7 @@ This RFC lays out a domain-oriented, locality abstracted interface that allows c
 to read and write data to the cluster as if it was a single machine. This interface
 does not require the user to be aware of the underlying storage location, but provides
 additional context if the caller wants to perform network optimization themselves (this
-is a similar approach to the one taken by CockroachDB between their transaction and SQl
+is a similar approach to the one taken by CockroachDB between their transaction and SQL
 layers).
 
 # Vocabulary
@@ -46,10 +46,10 @@ fall into the OLAP category of workloads. \
 Separating storage and compute has become a popular technique for scaling data
 intensive systems (see [The Firebolt Cloud Data Warehouse Whitepaper](https://www.firebolt.io/resources/firebolt-cloud-data-warehouse-whitepaper))
 .
-This decoupling is a double-edged sword. Processing engines and storage layers can scale
-independently, allowing the data warehouse to flexibly scale to meet the needs of its
-users. However, processing engines must now retrieve data from storage OTN, which is
-a costly operation that can cause problems when retrieving
+This decoupling is a double-edged sword. Processing engines and storage layers can 
+de developed and deployed independently, allowing the data warehouse to flexibly scale 
+to meet the needs of its users. However, processing engines must now retrieve data 
+from storage OTN, which is a costly operation that can cause problems when retrieving
 large datasets.
 
 The simplest way to solve this problem is by reducing the amount of data a processing
@@ -79,7 +79,7 @@ user to retrieve massive amounts of raw time-series data for advanced computing
 architecture, while the second benefits greatly from reducing the amount of network
 hops.
 
-This RFC attempts to reconcile these two workloads by providing an architecture
+This RFC attempts to reconcile these two workloads by defining an architecture
 that separates the algorithms/components for storing data from those who perform
 aggregations/computations on it. Defining clear requirements and interfaces for the
 distribution layer is essential to the success of this reconciliation. What are the
@@ -176,6 +176,9 @@ cluster:
 
 1. Channels in the cluster (name, key, data rate, leaseholder node, etc.)
 2. Segments for a channel (i.e. what ranges of a channel's data exist on which node).
+
+By performing lookups on this metadata, the DL can serve segment data for any channel
+from any node in the cluster.
 
 ### Cesium
 
