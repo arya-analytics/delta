@@ -98,10 +98,9 @@ func executeRequest(iter cesium.StreamIterator, req Request) Response {
 		return Response{}
 	case Close:
 		err := iter.Close()
-		if err != nil {
-			return newAck(false)
-		}
-		return newAck(true)
+		ack := newAck(err == nil)
+		ack.Error = err
+		return ack
 	default:
 		ack := newAck(false)
 		ack.Error = errors.New("[segment.iterator.serve] - unknown command")

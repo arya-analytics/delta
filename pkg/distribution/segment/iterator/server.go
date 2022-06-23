@@ -9,19 +9,21 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-type serverFactory struct {
+type server struct {
 	db cesium.DB
 }
 
-func newServerFactory(transport Transport) {
-	sf := &serverFactory{}
+func newServer(transport Transport) *server {
+	sf := new(server)
 	transport.Handle(sf.Handle)
+	return sf
 }
 
-func (sf *serverFactory) Handle(_ctx context.Context, _server Server) error {
+// Handle handles incoming requests from the transport.
+func (sf *server) Handle(_ctx context.Context, server Server) error {
 	// Block until we receive the first request from the client. This message should
 	// have an Open command that provides context for opening the cesium iterator.
-	req, err := _server.Receive()
+	req, err := server.Receive()
 	if err != nil {
 		return err
 	}
@@ -38,35 +40,66 @@ func (sf *serverFactory) Handle(_ctx context.Context, _server Server) error {
 		)
 	}
 
-	// Set up the processing pipeline.
+	ctx := confluence.NewContext().WithCtx(_ctx)
 
+	// cesiumPipeline moves cesium responses from the iterator source
+	// to a point where they can be translated into a transport Response.
 	cesiumPipeline := confluence.NewPipeline[cesium.RetrieveResponse]()
-	cesiumPipeline.Source("iter", iter)
-
-	ctx := confluence.DefaultContext()
-	ctx.Ctx = _ctx
 
 	requestPipeline := confluence.NewPipeline[Request]()
 	responsePipeline := confluence.NewPipeline[Response]()
 
-	receiver := &confluence.Receiver[Request]{Receiver: _server}
-	sender := &confluence.Sender[Response]{Sender: _server}
+	cesiumPipeline.Source("iterator", iter)
+
+	// receiver receives requests from the server and pipes them into the
+	// requestPipeline.
+	receiver := &confluence.Receiver[Request]{Receiver: server}
 	requestPipeline.Segment("receiver", receiver)
+
+	// sender receives responses from the response pipeline and sends
+	// them over the network.
+	sender := &confluence.Sender[Response]{Sender: server}
 	responsePipeline.Segment("sender", sender)
 
-	te := newTranslateExecutor(iter)
-	requestPipeline.Sink("translator", te)
-	responsePipeline.Source("translator", te)
+	// executor executes requests as method calls on the iterator. Pipes
+	// synchronous acknowledgements out to the response pipeline.
+	te := newServerExecutor(iter)
+	requestPipeline.Sink("executor", te)
+	responsePipeline.Source("executor", te)
 
-	ts := newTranslateSender(req.Keys.CesiumMap())
-	cesiumPipeline.Sink("translateSender", ts)
-	responsePipeline.Source("translateSender", ts)
+	// translator translates cesium responses from the iterator source into
+	// responses transportable over the network.
+	ts := newServerTranslator(req.Keys.CesiumMap())
+	cesiumPipeline.Sink("translator", ts)
+	responsePipeline.Source("translator", ts)
 
 	defer func() {
 		if err := ctx.Shutdown.Shutdown(); err != nil {
 			panic(err)
 		}
 	}()
+
+	requestBuilder := requestPipeline.NewRouteBuilder()
+	requestBuilder.RouteUnary("receiver", "executor", 1)
+
+	if requestBuilder.Error() != nil {
+		return requestBuilder.Error()
+	}
+
+	responseBuilder := responsePipeline.NewRouteBuilder()
+	responseBuilder.RouteUnary("translator", "sender", 1)
+	responseBuilder.RouteUnary("executor", "sender", 1)
+
+	if responseBuilder.Error() != nil {
+		return responseBuilder.Error()
+	}
+
+	cesiumBuilder := cesiumPipeline.NewRouteBuilder()
+	cesiumBuilder.RouteUnary("iterator", "translator", 1)
+
+	if cesiumBuilder.Error() != nil {
+		return cesiumBuilder.Error()
+	}
 
 	requestPipeline.Flow(ctx)
 	responsePipeline.Flow(ctx)
@@ -75,35 +108,37 @@ func (sf *serverFactory) Handle(_ctx context.Context, _server Server) error {
 	return <-ctx.ErrC
 }
 
-type translateExecutor struct {
+type serverExecutor struct {
 	iter cesium.StreamIterator
 	confluence.Translator[Request, Response]
 }
 
-func newTranslateExecutor(iter cesium.StreamIterator) *translateExecutor {
-	te := &translateExecutor{iter: iter}
+func newServerExecutor(iter cesium.StreamIterator) *serverExecutor {
+	te := &serverExecutor{iter: iter}
 	te.Translator.Translate = te.execute
 	return te
 }
 
-func (te *translateExecutor) execute(ctx confluence.Context, req Request) Response {
+func (te *serverExecutor) execute(ctx confluence.Context, req Request) Response {
 	return executeRequest(te.iter, req)
 }
 
-type translateSender struct {
+type serverTranslator struct {
 	wrapper *core.CesiumWrapper
 	confluence.Translator[cesium.RetrieveResponse, Response]
 }
 
-func newTranslateSender(keyMap map[cesium.ChannelKey]channel.Key) *translateSender {
+func newServerTranslator(keyMap map[cesium.ChannelKey]channel.Key) *serverTranslator {
 	wrapper := &core.CesiumWrapper{KeyMap: keyMap}
-	ts := &translateSender{wrapper: wrapper}
+	ts := &serverTranslator{wrapper: wrapper}
 	ts.Translator.Translate = ts.translate
 	return ts
 }
 
-func (te *translateSender) translate(ctx confluence.Context,
-	req cesium.RetrieveResponse) Response {
+func (te *serverTranslator) translate(
+	ctx confluence.Context,
+	req cesium.RetrieveResponse,
+) Response {
 	return Response{
 		Variant:  ResponseVariantData,
 		Error:    req.Error,
