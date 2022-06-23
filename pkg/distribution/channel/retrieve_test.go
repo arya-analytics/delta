@@ -33,7 +33,7 @@ var _ = Describe("Retrieve", Ordered, func() {
 		cdb1, err := cesium.Open("", cesium.MemBacked(), cesium.WithLogger(log))
 		Expect(err).ToNot(HaveOccurred())
 		cesiumDBs[db1.HostID()] = cdb1
-		services[db1.HostID()] = channel.New(db1, gorp.Wrap(db1), cdb1, net.Route(""))
+		services[db1.HostID()] = channel.New(db1, gorp.Wrap(db1), cdb1, net.RouteUnary(""))
 
 		db2, err := aspenBuilder.New()
 		Expect(err).ToNot(HaveOccurred())
@@ -41,7 +41,7 @@ var _ = Describe("Retrieve", Ordered, func() {
 		cdb2, err := cesium.Open("", cesium.MemBacked(), cesium.WithLogger(log))
 		Expect(err).ToNot(HaveOccurred())
 		cesiumDBs[db2.HostID()] = cdb2
-		services[db2.HostID()] = channel.New(db2, gorp.Wrap(db2), cdb2, net.Route(""))
+		services[db2.HostID()] = channel.New(db2, gorp.Wrap(db2), cdb2, net.RouteUnary(""))
 	})
 	It("Should correctly retrieve a set of channels", func() {
 		created, err := services[1].NewCreate().

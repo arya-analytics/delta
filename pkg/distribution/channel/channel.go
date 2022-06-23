@@ -23,14 +23,32 @@ func NewKey(nodeID aspen.NodeID, cesiumKey cesium.ChannelKey) (key Key) {
 // node for the Channel.
 func (c Key) NodeID() aspen.NodeID { return aspen.NodeID(binary.LittleEndian.Uint32(c[0:4])) }
 
-// CesiumKey returns a unique identifier for the Channel within the leaseholder node's
+// Cesium returns a unique identifier for the Channel within the leaseholder node's
 // cesium.DB. This value is NOT guaranteed tobe unique across the entire cluster.
-func (c Key) CesiumKey() cesium.ChannelKey {
+func (c Key) Cesium() cesium.ChannelKey {
 	return cesium.ChannelKey(binary.LittleEndian.Uint16(c[4:6]))
 }
 
-// Lease implements the proxy.Route interface.
+// Lease implements the proxy.RouteUnary interface.
 func (c Key) Lease() aspen.NodeID { return c.NodeID() }
+
+type Keys []Key
+
+func (k Keys) Cesium() []cesium.ChannelKey {
+	keys := make([]cesium.ChannelKey, len(k))
+	for i, key := range k {
+		keys[i] = key.Cesium()
+	}
+	return keys
+}
+
+func (k Keys) CesiumMap() map[cesium.ChannelKey]Key {
+	m := make(map[cesium.ChannelKey]Key)
+	for _, key := range k {
+		m[key.Cesium()] = key
+	}
+	return m
+}
 
 type Channel struct {
 	Name   string
@@ -49,5 +67,5 @@ func (c Channel) GorpKey() Key { return c.Key() }
 // from.
 func (c Channel) SetOptions() []interface{} { return []interface{}{c.Lease()} }
 
-// Lease implements the proxy.Route interface.
+// Lease implements the proxy.RouteUnary interface.
 func (c Channel) Lease() aspen.NodeID { return c.NodeID }

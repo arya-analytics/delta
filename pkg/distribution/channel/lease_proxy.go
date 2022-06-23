@@ -13,7 +13,7 @@ type leaseProxy struct {
 	metadataDB *gorp.DB
 	cesiumDB   cesium.DB
 	transport  CreateTransport
-	router     proxy.Router[Channel]
+	router     proxy.BatchFactory[Channel]
 }
 
 func newLeaseProxy(
@@ -27,7 +27,7 @@ func newLeaseProxy(
 		metadataDB: metadataDB,
 		cesiumDB:   cesiumDB,
 		transport:  transport,
-		router:     proxy.NewRouter[Channel](cluster.HostID()),
+		router:     proxy.NewBatchFactory[Channel](cluster.HostID()),
 	}
 	p.transport.Handle(p.handle)
 	return p
@@ -39,7 +39,7 @@ func (lp *leaseProxy) handle(ctx context.Context, msg CreateMessage) (CreateMess
 }
 
 func (lp *leaseProxy) create(ctx context.Context, channels []Channel) ([]Channel, error) {
-	local, remote := lp.router.Route(channels)
+	local, remote := lp.router.Batch(channels)
 	oChannels := make([]Channel, 0, len(channels))
 	for nodeID, batch := range remote {
 		remoteChannels, err := lp.createRemote(ctx, nodeID, batch)

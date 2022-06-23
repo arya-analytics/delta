@@ -6,17 +6,17 @@ type Entry interface {
 	Lease() aspen.NodeID
 }
 
-type Router[E Entry] interface {
-	Route(entries []E) (local []E, remote map[aspen.NodeID][]E)
+type BatchFactory[E Entry] interface {
+	Batch(entries []E) (local []E, remote map[aspen.NodeID][]E)
 }
 
-type proxy[E Entry] struct {
+type batch[E Entry] struct {
 	host aspen.NodeID
 }
 
-func NewRouter[E Entry](host aspen.NodeID) Router[E] { return proxy[E]{host} }
+func NewBatchFactory[E Entry](host aspen.NodeID) BatchFactory[E] { return batch[E]{host} }
 
-func (p proxy[E]) Route(entries []E) (local []E, remote map[aspen.NodeID][]E) {
+func (p batch[E]) Batch(entries []E) (local []E, remote map[aspen.NodeID][]E) {
 	local = make([]E, 0, len(entries))
 	remote = make(map[aspen.NodeID][]E)
 	for _, entry := range entries {

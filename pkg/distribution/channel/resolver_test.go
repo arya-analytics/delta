@@ -26,7 +26,7 @@ var _ = Describe("Resolver", func() {
 		Expect(err).ToNot(HaveOccurred())
 		cdb1, err := cesium.Open("", cesium.MemBacked(), cesium.WithLogger(log))
 		Expect(err).ToNot(HaveOccurred())
-		ch, err := channel.New(db1, gorp.Wrap(db1), cdb1, net.Route("")).
+		ch, err := channel.New(db1, gorp.Wrap(db1), cdb1, net.RouteUnary("")).
 			NewCreate().
 			WithDataRate(5 * cesium.Hz).
 			WithDataType(cesium.Float64).
@@ -40,7 +40,7 @@ var _ = Describe("Resolver", func() {
 		Expect(err).ToNot(HaveOccurred())
 		cdb2, err := cesium.Open("", cesium.MemBacked(), cesium.WithLogger(log))
 		Expect(err).ToNot(HaveOccurred())
-		resolver = channel.New(db2, gorp.Wrap(db2), cdb2, net.Route(""))
+		resolver = channel.New(db2, gorp.Wrap(db2), cdb2, net.RouteUnary(""))
 	})
 	It("Should correctly resolve the address of the channel", func() {
 		addr, err := resolver.Resolve(key)
