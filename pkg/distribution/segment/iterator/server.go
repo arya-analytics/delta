@@ -6,6 +6,7 @@ import (
 	"github.com/arya-analytics/delta/pkg/distribution/channel"
 	"github.com/arya-analytics/delta/pkg/distribution/segment/core"
 	"github.com/arya-analytics/x/confluence"
+	"github.com/arya-analytics/x/telem"
 	"github.com/cockroachdb/errors"
 )
 
@@ -40,7 +41,7 @@ func (sf *server) Handle(_ctx context.Context, server Server) error {
 		)
 	}
 
-	ctx := confluence.NewContext().WithCtx(_ctx)
+	ctx := confluence.WrapContext().WithCtx(_ctx)
 
 	// cesiumPipeline moves cesium responses from the iterator source
 	// to a point where they can be translated into a transport Response.
@@ -108,14 +109,95 @@ func (sf *server) Handle(_ctx context.Context, server Server) error {
 	return <-ctx.ErrC
 }
 
+type streamIterator struct {
+	confluence.Sink[Request]
+	confluence.Source[Response]
+}
+
+func newStreamIterator(
+	ctx context.Context,
+	db cesium.DB,
+	rng telem.TimeRange,
+	keys channel.Keys,
+) (*streamIterator, error) {
+	_ctx := confluence.WrapContext().WithCtx(ctx)
+
+	iter, err := db.NewRetrieve().WhereChannels(keys.Cesium()...).Iterate(_ctx.Ctx)
+	if err != nil {
+		return nil, errors.Wrap(
+			err,
+			"[segment.iterator.serve] - failed to open cesium iterator",
+		)
+	}
+
+	// cesiumPipeline moves cesium responses from the iterator source
+	// to a point where they can be translated into a transport Response.
+	cesiumPipeline := confluence.NewPipeline[cesium.RetrieveResponse]()
+
+	requestPipeline := confluence.NewPipeline[Request]()
+	responsePipeline := confluence.NewPipeline[Response]()
+
+	cesiumPipeline.Source("iterator", iter)
+
+	// executor executes requests as method calls on the iterator. Pipes
+	// synchronous acknowledgements out to the response pipeline.
+	te := newServerExecutor(iter)
+	requestPipeline.Sink("executor", te)
+	responsePipeline.Source("executor", te)
+
+	// translator translates cesium responses from the iterator source into
+	// responses transportable over the network.
+	ts := newServerTranslator(keys.CesiumMap())
+	cesiumPipeline.Sink("translator", ts)
+	responsePipeline.Source("translator", ts)
+
+	defer func() {
+		if err := _ctx.Shutdown.Shutdown(); err != nil {
+			panic(err)
+		}
+	}()
+
+	requestBuilder := requestPipeline.NewRouteBuilder()
+	requestBuilder.RouteUnary("receiver", "executor", 1)
+
+	if requestBuilder.Error() != nil {
+		return nil, requestBuilder.Error()
+	}
+
+	responseBuilder := responsePipeline.NewRouteBuilder()
+	responseBuilder.RouteUnary("translator", "sender", 1)
+	responseBuilder.RouteUnary("executor", "sender", 1)
+
+	if responseBuilder.Error() != nil {
+		return nil, responseBuilder.Error()
+	}
+
+	cesiumBuilder := cesiumPipeline.NewRouteBuilder()
+	cesiumBuilder.RouteUnary("iterator", "translator", 1)
+
+	if cesiumBuilder.Error() != nil {
+		return nil, cesiumBuilder.Error()
+	}
+
+	requestPipeline.Flow(_ctx)
+	responsePipeline.Flow(_ctx)
+	requestPipeline.Flow(_ctx)
+
+	streamIter := &streamIterator{}
+	streamIter.Sink = requestPipeline
+	streamIter.Source = responsePipeline
+
+	return <-ctx.ErrC
+}
+
 type serverExecutor struct {
 	iter cesium.StreamIterator
-	confluence.Translator[Request, Response]
+	confluence.CoreTranslator[Request, Response]
 }
 
 func newServerExecutor(iter cesium.StreamIterator) *serverExecutor {
 	te := &serverExecutor{iter: iter}
-	te.Translator.Translate = te.execute
+	te.CoreTranslator.Translate = te.execute
 	return te
 }
 
@@ -125,13 +207,13 @@ func (te *serverExecutor) execute(ctx confluence.Context, req Request) Response 
 
 type serverTranslator struct {
 	wrapper *core.CesiumWrapper
-	confluence.Translator[cesium.RetrieveResponse, Response]
+	confluence.CoreTranslator[cesium.RetrieveResponse, Response]
 }
 
 func newServerTranslator(keyMap map[cesium.ChannelKey]channel.Key) *serverTranslator {
 	wrapper := &core.CesiumWrapper{KeyMap: keyMap}
 	ts := &serverTranslator{wrapper: wrapper}
-	ts.Translator.Translate = ts.translate
+	ts.CoreTranslator.Translate = ts.translate
 	return ts
 }
 
