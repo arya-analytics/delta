@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"github.com/arya-analytics/aspen"
 	"github.com/arya-analytics/cesium"
+	"github.com/arya-analytics/delta/pkg/distribution/node"
+	"github.com/arya-analytics/x/filter"
 )
 
 // Key represents a unique identifier for a Channel. This value is guaranteed to be
@@ -48,6 +50,16 @@ func (k Keys) CesiumMap() map[cesium.ChannelKey]Key {
 		m[key.Cesium()] = key
 	}
 	return m
+}
+
+// Nodes returns a slice of all unique node IDs of Keys.
+func (k Keys) Nodes() (ids []node.ID) {
+	for _, key := range k {
+		if !filter.ElementOf(ids, key.NodeID()) {
+			ids = append(ids, key.NodeID())
+		}
+	}
+	return ids
 }
 
 type Channel struct {

@@ -8,7 +8,9 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var ctx = context.Background()
+var (
+	ctx = context.Background()
+)
 
 func TestChannel(t *testing.T) {
 	RegisterFailHandler(Fail)

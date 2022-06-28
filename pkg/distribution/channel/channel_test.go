@@ -10,7 +10,7 @@ import (
 )
 
 var _ = Describe("Channel", func() {
-	Describe("Key", func() {
+	Describe("Name", func() {
 		var key channel.Key
 		BeforeEach(func() {
 			key = channel.NewKey(1, 2)

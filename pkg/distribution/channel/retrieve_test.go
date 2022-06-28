@@ -2,9 +2,9 @@ package channel_test
 
 import (
 	"github.com/arya-analytics/aspen"
-	aspenmock "github.com/arya-analytics/aspen/mock"
 	"github.com/arya-analytics/cesium"
 	"github.com/arya-analytics/delta/pkg/distribution/channel"
+	"github.com/arya-analytics/delta/pkg/distribution/mock"
 	"github.com/arya-analytics/x/gorp"
 	tmock "github.com/arya-analytics/x/transport/mock"
 	. "github.com/onsi/ginkgo/v2"
@@ -15,34 +15,33 @@ import (
 
 var _ = Describe("Retrieve", Ordered, func() {
 	var (
-		services  map[aspen.NodeID]*channel.Service
-		aspenDBs  map[aspen.NodeID]aspen.DB
-		cesiumDBs map[aspen.NodeID]cesium.DB
-		log       *zap.Logger
+		services map[aspen.NodeID]*channel.Service
+		builder  *mock.StorageBuilder
+		log      *zap.Logger
 	)
 	BeforeAll(func() {
 		log = zap.NewNop()
 		services = make(map[aspen.NodeID]*channel.Service)
-		aspenDBs = make(map[aspen.NodeID]aspen.DB)
-		cesiumDBs = make(map[aspen.NodeID]cesium.DB)
 		net := tmock.NewNetwork[channel.CreateMessage, channel.CreateMessage]()
-		aspenBuilder := aspenmock.NewMemBuilder(aspen.WithLogger(log.Sugar()))
-		db1, err := aspenBuilder.New()
-		Expect(err).ToNot(HaveOccurred())
-		aspenDBs[db1.HostID()] = db1
-		cdb1, err := cesium.Open("", cesium.MemBacked(), cesium.WithLogger(log))
-		Expect(err).ToNot(HaveOccurred())
-		cesiumDBs[db1.HostID()] = cdb1
-		services[db1.HostID()] = channel.New(db1, gorp.Wrap(db1), cdb1, net.RouteUnary(""))
-
-		db2, err := aspenBuilder.New()
-		Expect(err).ToNot(HaveOccurred())
-		aspenDBs[db2.HostID()] = db2
-		cdb2, err := cesium.Open("", cesium.MemBacked(), cesium.WithLogger(log))
-		Expect(err).ToNot(HaveOccurred())
-		cesiumDBs[db2.HostID()] = cdb2
-		services[db2.HostID()] = channel.New(db2, gorp.Wrap(db2), cdb2, net.RouteUnary(""))
+		builder = mock.NewStorage()
+		store1, err := builder.New(log)
+		Expect(err).To(BeNil())
+		services[1] = channel.New(
+			store1.Aspen,
+			gorp.Wrap(store1.Aspen),
+			store1.Cesium,
+			net.RouteUnary(""),
+		)
+		store2, err := builder.New(log)
+		Expect(err).To(BeNil())
+		services[2] = channel.New(
+			store2.Aspen,
+			gorp.Wrap(store2.Aspen),
+			store2.Cesium,
+			net.RouteUnary(""),
+		)
 	})
+	AfterAll(func() { Expect(builder.Close()).To(Succeed()) })
 	It("Should correctly retrieve a set of channels", func() {
 		created, err := services[1].NewCreate().
 			WithName("SG02").

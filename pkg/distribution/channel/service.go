@@ -3,7 +3,6 @@ package channel
 import (
 	"github.com/arya-analytics/aspen"
 	"github.com/arya-analytics/cesium"
-	"github.com/arya-analytics/delta/pkg/distribution/node"
 	"github.com/arya-analytics/x/address"
 	"github.com/arya-analytics/x/gorp"
 )
@@ -23,7 +22,7 @@ func New(
 	s := &Service{
 		metadataDB: metadataDB,
 		proxy:      newLeaseProxy(cluster, metadataDB, cesiumDB, transport),
-		resolver:   &resolver{cluster: cluster},
+		resolver:   &resolver{core: cluster},
 	}
 	return s
 }
@@ -32,8 +31,4 @@ func (s *Service) NewCreate() Create { return newCreate(s.proxy) }
 
 func (s *Service) NewRetrieve() Retrieve { return newRetrieve(s.metadataDB) }
 
-func (s *Service) Resolve(key Key) (address.Address, error) {
-	return s.resolver.Resolve(key)
-}
-
-func (s *Service) HostID() node.ID { return s.proxy.cluster.HostID() }
+func (s *Service) Resolve(key Key) (address.Address, error) { return s.resolver.Resolve(key) }

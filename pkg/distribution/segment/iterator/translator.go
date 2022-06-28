@@ -1,6 +1,7 @@
 package iterator
 
 import (
+	"context"
 	"github.com/arya-analytics/cesium"
 	"github.com/arya-analytics/x/confluence"
 	"github.com/arya-analytics/x/telem"
@@ -13,7 +14,7 @@ type emitter struct {
 }
 
 // Next emits a Next request to the stream.
-func (e *emitter) Next() { e.emit(Request{Command: Next}) }
+func (e *emitter) next() { e.emit(Request{Command: Next}) }
 
 // Prev emits a Prev request to the stream.
 func (e *emitter) Prev() { e.emit(Request{Command: Prev}) }
@@ -63,7 +64,7 @@ func (e *emitter) Exhaust() { e.emit(Request{Command: Exhaust}) }
 
 func (e *emitter) emit(req Request) { e.Out.Inlet() <- req }
 
-func executeRequest(iter cesium.StreamIterator, req Request) Response {
+func executeRequest(ctx context.Context, iter cesium.StreamIterator, req Request) Response {
 	switch req.Command {
 	case Open:
 		ack := newAck(false)
@@ -94,7 +95,7 @@ func executeRequest(iter cesium.StreamIterator, req Request) Response {
 	case SeekGE:
 		return newAck(iter.SeekGE(req.Stamp))
 	case Exhaust:
-		iter.Exhaust()
+		iter.Exhaust(ctx)
 		return Response{}
 	case Close:
 		err := iter.Close()
@@ -103,7 +104,7 @@ func executeRequest(iter cesium.StreamIterator, req Request) Response {
 		return ack
 	default:
 		ack := newAck(false)
-		ack.Error = errors.New("[segment.iterator.serve] - unknown command")
+		ack.Error = errors.New("[segment.iterator] - unknown command")
 		return ack
 	}
 }

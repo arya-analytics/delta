@@ -39,16 +39,16 @@ func (lp *leaseProxy) handle(ctx context.Context, msg CreateMessage) (CreateMess
 }
 
 func (lp *leaseProxy) create(ctx context.Context, channels []Channel) ([]Channel, error) {
-	local, remote := lp.router.Batch(channels)
+	batch := lp.router.Batch(channels)
 	oChannels := make([]Channel, 0, len(channels))
-	for nodeID, batch := range remote {
-		remoteChannels, err := lp.createRemote(ctx, nodeID, batch)
+	for nodeID, entries := range batch.Remote {
+		remoteChannels, err := lp.createRemote(ctx, nodeID, entries)
 		if err != nil {
 			return nil, err
 		}
 		oChannels = append(oChannels, remoteChannels...)
 	}
-	ch, err := lp.createLocal(local)
+	ch, err := lp.createLocal(batch.Local)
 	if err != nil {
 		return oChannels, err
 	}

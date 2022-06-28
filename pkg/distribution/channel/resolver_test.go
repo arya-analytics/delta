@@ -1,10 +1,9 @@
 package channel_test
 
 import (
-	"github.com/arya-analytics/aspen"
-	aspenmock "github.com/arya-analytics/aspen/mock"
 	"github.com/arya-analytics/cesium"
 	"github.com/arya-analytics/delta/pkg/distribution/channel"
+	"github.com/arya-analytics/delta/pkg/distribution/mock"
 	"github.com/arya-analytics/x/address"
 	"github.com/arya-analytics/x/gorp"
 	tmock "github.com/arya-analytics/x/transport/mock"
@@ -13,20 +12,20 @@ import (
 	"go.uber.org/zap"
 )
 
-var _ = Describe("Resolver", func() {
+var _ = Describe("Resolver", Ordered, func() {
 	var (
 		resolver channel.Resolver
 		key      channel.Key
+		builder  *mock.StorageBuilder
 	)
-	BeforeEach(func() {
+	BeforeAll(func() {
 		log := zap.NewNop()
 		net := tmock.NewNetwork[channel.CreateMessage, channel.CreateMessage]()
-		aspenBuilder := aspenmock.NewMemBuilder(aspen.WithLogger(log.Sugar()))
-		db1, err := aspenBuilder.New()
+		builder = mock.NewStorage()
+		store1, err := builder.New(log)
+		Expect(err).To(BeNil())
 		Expect(err).ToNot(HaveOccurred())
-		cdb1, err := cesium.Open("", cesium.MemBacked(), cesium.WithLogger(log))
-		Expect(err).ToNot(HaveOccurred())
-		ch, err := channel.New(db1, gorp.Wrap(db1), cdb1, net.RouteUnary("")).
+		ch, err := channel.New(store1.Aspen, gorp.Wrap(store1.Aspen), store1.Cesium, net.RouteUnary("")).
 			NewCreate().
 			WithDataRate(5 * cesium.Hz).
 			WithDataType(cesium.Float64).
@@ -35,12 +34,12 @@ var _ = Describe("Resolver", func() {
 			Exec(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		key = ch.Key()
-
-		db2, err := aspenBuilder.New()
-		Expect(err).ToNot(HaveOccurred())
-		cdb2, err := cesium.Open("", cesium.MemBacked(), cesium.WithLogger(log))
-		Expect(err).ToNot(HaveOccurred())
-		resolver = channel.New(db2, gorp.Wrap(db2), cdb2, net.RouteUnary(""))
+		store2, err := builder.New(log)
+		Expect(err).To(BeNil())
+		resolver = channel.New(store2.Aspen, gorp.Wrap(store2.Aspen), store2.Cesium, net.RouteUnary(""))
+	})
+	AfterAll(func() {
+		Expect(builder.Close()).To(Succeed())
 	})
 	It("Should correctly resolve the address of the channel", func() {
 		addr, err := resolver.Resolve(key)
