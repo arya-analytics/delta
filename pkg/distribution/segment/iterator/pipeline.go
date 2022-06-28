@@ -3,7 +3,7 @@ package iterator
 import "github.com/arya-analytics/x/confluence"
 
 const (
-	acknowledgeAddr = "acknowledge"
+	acknowledgeAddr = "synchronizer"
 	dataAddr        = "data"
 )
 

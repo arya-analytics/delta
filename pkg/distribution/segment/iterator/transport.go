@@ -47,11 +47,14 @@ type Response struct {
 	Variant  ResponseVariant
 	NodeID   node.ID
 	Ack      bool
+	Command  Command
 	Segments []core.Segment
 	Error    error
 }
 
-func newAck(ok bool) Response { return Response{Variant: ResponseVariantAck, Ack: ok} }
+func newAck(host node.ID, cmd Command, ok bool) Response {
+	return Response{Variant: ResponseVariantAck, Ack: ok, Command: cmd, NodeID: host}
+}
 
 type (
 	Server    = transport.StreamServer[Request, Response]

@@ -3,9 +3,11 @@ package iterator
 import (
 	"context"
 	"github.com/arya-analytics/cesium"
+	"github.com/arya-analytics/delta/pkg/distribution/node"
 	"github.com/arya-analytics/x/confluence"
 	"github.com/arya-analytics/x/telem"
 	"github.com/cockroachdb/errors"
+	"github.com/sirupsen/logrus"
 )
 
 // emitter translates iterator commands into requests and writes them to a stream.
@@ -62,48 +64,51 @@ func (e *emitter) Close() { e.emit(Request{Command: Close}) }
 // Exhaust emits an Exhaust request to the stream.
 func (e *emitter) Exhaust() { e.emit(Request{Command: Exhaust}) }
 
-func (e *emitter) emit(req Request) { e.Out.Inlet() <- req }
+func (e *emitter) emit(req Request) {
+	e.Out.Inlet() <- req
+}
 
-func executeRequest(ctx context.Context, iter cesium.StreamIterator, req Request) Response {
+func executeRequest(ctx context.Context, host node.ID, iter cesium.StreamIterator, req Request) Response {
+	logrus.Infof("Executing command %v on node %s", req.Command, host)
 	switch req.Command {
 	case Open:
-		ack := newAck(false)
+		ack := newAck(host, req.Command, false)
 		ack.Error = errors.New(
 			"[segment.iterator.serve] - Open command called multiple times",
 		)
 		return ack
 	case Next:
-		return newAck(iter.Next())
+		return newAck(host, req.Command, iter.Next())
 	case Prev:
-		return newAck(iter.Prev())
+		return newAck(host, req.Command, iter.Prev())
 	case First:
-		return newAck(iter.First())
+		return newAck(host, req.Command, iter.First())
 	case Last:
-		return newAck(iter.Last())
+		return newAck(host, req.Command, iter.Last())
 	case NextSpan:
-		return newAck(iter.NextSpan(req.Span))
+		return newAck(host, req.Command, iter.NextSpan(req.Span))
 	case PrevSpan:
-		return newAck(iter.PrevSpan(req.Span))
+		return newAck(host, req.Command, iter.PrevSpan(req.Span))
 	case NextRange:
-		return newAck(iter.NextRange(req.Range))
+		return newAck(host, req.Command, iter.NextRange(req.Range))
 	case SeekFirst:
-		return newAck(iter.SeekFirst())
+		return newAck(host, req.Command, iter.SeekFirst())
 	case SeekLast:
-		return newAck(iter.SeekLast())
+		return newAck(host, req.Command, iter.SeekLast())
 	case SeekLT:
-		return newAck(iter.SeekLT(req.Stamp))
+		return newAck(host, req.Command, iter.SeekLT(req.Stamp))
 	case SeekGE:
-		return newAck(iter.SeekGE(req.Stamp))
+		return newAck(host, req.Command, iter.SeekGE(req.Stamp))
 	case Exhaust:
 		iter.Exhaust(ctx)
 		return Response{}
 	case Close:
 		err := iter.Close()
-		ack := newAck(err == nil)
+		ack := newAck(host, req.Command, err == nil)
 		ack.Error = err
 		return ack
 	default:
-		ack := newAck(false)
+		ack := newAck(host, req.Command, false)
 		ack.Error = errors.New("[segment.iterator] - unknown command")
 		return ack
 	}

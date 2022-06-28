@@ -8,22 +8,22 @@ import (
 	"github.com/arya-analytics/x/telem"
 )
 
-type client struct {
+type remoteIterator struct {
 	target    address.Address
 	requests  confluence.Sink[Request]
 	responses confluence.Source[Response]
 }
 
-func (c *client) Flow(ctx signal.Context) {
+func (c *remoteIterator) Flow(ctx signal.Context) {
 	c.requests.Flow(ctx)
 	c.responses.Flow(ctx)
 }
 
-func (c *client) OutTo(inlets ...confluence.Inlet[Response]) { c.responses.OutTo(inlets...) }
+func (c *remoteIterator) OutTo(inlets ...confluence.Inlet[Response]) { c.responses.OutTo(inlets...) }
 
-func (c *client) InFrom(outlets ...confluence.Outlet[Request]) { c.requests.InFrom(outlets...) }
+func (c *remoteIterator) InFrom(outlets ...confluence.Outlet[Request]) { c.requests.InFrom(outlets...) }
 
-func newClient(
+func newRemoteIterator(
 	ctx signal.Context,
 	transport Transport,
 	target address.Address,
@@ -35,6 +35,8 @@ func newClient(
 		return nil, err
 	}
 
+	// Send an open request to the transport. This will open a localIterator  on the
+	// target node.
 	if err := stream.Send(Request{
 		Command: Open,
 		Keys:    keys,
@@ -46,5 +48,9 @@ func newClient(
 	sender := &confluence.Sender[Request]{Sender: stream}
 	receiver := &confluence.Receiver[Response]{Receiver: stream}
 
-	return &client{requests: sender, responses: receiver}, nil
+	iter := &remoteIterator{requests: sender, responses: receiver}
+
+	iter.Flow(ctx)
+
+	return iter, nil
 }

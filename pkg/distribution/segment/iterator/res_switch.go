@@ -1,27 +1,21 @@
 package iterator
 
 import (
-	"github.com/arya-analytics/x/address"
 	"github.com/arya-analytics/x/confluence"
+	"github.com/arya-analytics/x/signal"
 )
 
-type responseSwitch struct {
-	confluence.Switch[Response]
+type responseFilter struct {
+	confluence.Filter[Response]
 }
 
-func newResponseSwitch() responseSegment {
-	rs := &responseSwitch{}
-	rs.Switch.Switch = rs._switch
+func newResponseFilter(rejects confluence.Inlet[Response]) responseSegment {
+	rs := &responseFilter{}
+	rs.Filter.Rejects = rejects
+	rs.Filter.Filter = rs.filter
 	return rs
 }
 
-func (rs *responseSwitch) _switch(ctx confluence.Context, res Response) address.Address {
-	switch res.Variant {
-	case ResponseVariantData:
-		return acknowledgeAddr
-	case ResponseVariantAck:
-		return dataAddr
-	default:
-		return dataAddr
-	}
+func (rs *responseFilter) filter(ctx signal.Context, res Response) (bool, error) {
+	return res.Variant == ResponseVariantData, nil
 }
