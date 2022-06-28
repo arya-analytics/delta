@@ -5,6 +5,7 @@ import (
 	"github.com/arya-analytics/cesium"
 	"github.com/arya-analytics/delta/pkg/distribution/channel"
 	"github.com/arya-analytics/x/binary"
+	"github.com/arya-analytics/x/telem"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -32,8 +33,8 @@ var _ = Describe("Channel", func() {
 				NodeID: 1,
 				Cesium: cesium.Channel{
 					Key:      2,
-					DataRate: 5 * cesium.Hz,
-					DataType: cesium.Float32,
+					DataRate: 5 * telem.Hz,
+					DataType: telem.Float32,
 				},
 			}
 			ed := &binary.GobEncoderDecoder{}

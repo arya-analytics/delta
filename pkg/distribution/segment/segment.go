@@ -4,6 +4,4 @@ import (
 	"github.com/arya-analytics/cesium"
 )
 
-type (
-	Segment = cesium.Segment
-)
+type Segment = cesium.Segment

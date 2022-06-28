@@ -2,10 +2,10 @@ package channel_test
 
 import (
 	"github.com/arya-analytics/aspen"
-	"github.com/arya-analytics/cesium"
 	"github.com/arya-analytics/delta/pkg/distribution/channel"
 	"github.com/arya-analytics/delta/pkg/distribution/mock"
 	"github.com/arya-analytics/x/gorp"
+	"github.com/arya-analytics/x/telem"
 	tmock "github.com/arya-analytics/x/transport/mock"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -45,8 +45,8 @@ var _ = Describe("Retrieve", Ordered, func() {
 	It("Should correctly retrieve a set of channels", func() {
 		created, err := services[1].NewCreate().
 			WithName("SG02").
-			WithDataRate(25*cesium.KHz).
-			WithDataType(cesium.Float32).
+			WithDataRate(25*telem.KHz).
+			WithDataType(telem.Float32).
 			WithNodeID(1).
 			ExecN(ctx, 10)
 		Expect(err).ToNot(HaveOccurred())

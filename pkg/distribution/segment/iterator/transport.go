@@ -26,6 +26,7 @@ const (
 	Exhaust
 	Error
 	Close
+	EOF
 )
 
 type Request struct {

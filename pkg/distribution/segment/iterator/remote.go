@@ -10,8 +10,8 @@ import (
 
 type remoteIterator struct {
 	target    address.Address
-	requests  confluence.Sink[Request]
-	responses confluence.Source[Response]
+	requests  *confluence.Sender[Request]
+	responses *confluence.Receiver[Response]
 }
 
 func (c *remoteIterator) Flow(ctx signal.Context) {

@@ -107,7 +107,13 @@ func New(
 	broadcast := &requestBroadcaster{}
 	requestPipeline.Segment("broadcast", broadcast)
 
-	iter := &iterator{emit: emit, sync: sync, wg: ctx, shutdown: cancel, Source: filter}
+	iter := &iterator{
+		emit:           emit,
+		sync:           sync,
+		wg:             ctx,
+		shutdown:       cancel,
+		responseFilter: filter,
+	}
 
 	responseBuilder := responsePipeline.NewRouteBuilder()
 	requestBuilder := requestPipeline.NewRouteBuilder()
@@ -144,10 +150,14 @@ type iterator struct {
 	sync     *synchronizer
 	shutdown context.CancelFunc
 	wg       signal.WaitGroup
-	confluence.Source[Response]
+	*responseFilter
 }
 
 func (i *iterator) ack(cmd Command) bool { return i.sync.sync(context.Background(), cmd) }
+
+func (i *iterator) ackRes(cmd Command) ([]Response, bool) {
+	return i.sync.syncWithRes(context.Background(), cmd)
+}
 
 func (i *iterator) Next() bool { i.emit.next(); return i.ack(Next) }
 
@@ -182,12 +192,47 @@ func (i *iterator) SeekLT(stamp telem.TimeStamp) bool {
 }
 
 func (i *iterator) SeekGE(stamp telem.TimeStamp) bool {
-	i.emit.SeekGE(
-		stamp)
+	i.emit.SeekGE(stamp)
 	return i.ack(SeekGE)
 }
 
-func (i *iterator) Close() error { i.shutdown(); return i.wg.WaitOnAll() }
+func (i *iterator) Close() error {
+	// Wait for all iterator internal operations to complete.
+	i.emit.Close()
+
+	// Wait for all nodes to acknowledge a safe closure.
+	responses, closeOk := i.ackRes(Close)
+
+	// Wait for all nodes to finish transmitting their last value.
+	eofOk := i.ack(EOF)
+
+	// Shutdown iterator operations.
+	i.shutdown()
+
+	// Wait on all goroutines to complete.
+	if err := i.wg.WaitOnAll(); err != nil && err != context.Canceled {
+		return err
+	}
+
+	// Check responses for errors.
+	for _, res := range responses {
+		if res.Error != nil {
+			return res.Error
+		}
+	}
+
+	// If we received a negative ack with no error response, it probably means
+	// we couldn't reach a node.
+	if !closeOk || !eofOk {
+		return errors.New(
+			"[segment.Iterator] - received a non-positive ack on close. node probably unreachable.",
+		)
+	}
+
+	i.Filter.Out.Close()
+
+	return nil
+}
 
 func (i *iterator) Exhaust() { i.emit.Exhaust() }
 

@@ -1,31 +1,38 @@
 package proxy
 
-import "github.com/arya-analytics/aspen"
+import (
+	"github.com/arya-analytics/aspen"
+	"github.com/arya-analytics/delta/pkg/distribution/node"
+)
 
 type Entry interface {
 	Lease() aspen.NodeID
 }
 
 type BatchFactory[E Entry] interface {
-	Batch(entries []E) (local []E, remote map[aspen.NodeID][]E)
+	Batch(entries []E) Batch[E]
 }
 
-type batch[E Entry] struct {
+type batchFactory[E Entry] struct {
 	host aspen.NodeID
 }
 
-func NewBatchFactory[E Entry](host aspen.NodeID) BatchFactory[E] { return batch[E]{host} }
+type Batch[E Entry] struct {
+	Local  []E
+	Remote map[node.ID][]E
+}
 
-func (p batch[E]) Batch(entries []E) (local []E, remote map[aspen.NodeID][]E) {
-	local = make([]E, 0, len(entries))
-	remote = make(map[aspen.NodeID][]E)
+func NewBatchFactory[E Entry](host aspen.NodeID) BatchFactory[E] { return batchFactory[E]{host} }
+
+func (p batchFactory[E]) Batch(entries []E) Batch[E] {
+	b := Batch[E]{Remote: make(map[node.ID][]E)}
 	for _, entry := range entries {
 		lease := entry.Lease()
 		if lease == p.host {
-			local = append(local, entry)
+			b.Local = append(b.Local, entry)
 		} else {
-			remote[lease] = append(remote[lease], entry)
+			b.Remote[lease] = append(b.Remote[lease], entry)
 		}
 	}
-	return local, remote
+	return b
 }

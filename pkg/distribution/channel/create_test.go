@@ -6,6 +6,7 @@ import (
 	"github.com/arya-analytics/delta/pkg/distribution/channel"
 	"github.com/arya-analytics/delta/pkg/distribution/mock"
 	"github.com/arya-analytics/x/gorp"
+	"github.com/arya-analytics/x/telem"
 	tmock "github.com/arya-analytics/x/transport/mock"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -49,8 +50,8 @@ var _ = Describe("Create", Ordered, func() {
 		JustBeforeEach(func() {
 			var err error
 			ch, err = services[1].NewCreate().
-				WithDataRate(5 * cesium.Hz).
-				WithDataType(cesium.Float64).
+				WithDataRate(5 * telem.Hz).
+				WithDataType(telem.Float64).
 				WithName("SG01").
 				WithNodeID(channelLeaseNodeID).
 				Exec(ctx)
@@ -68,8 +69,8 @@ var _ = Describe("Create", Ordered, func() {
 				Expect(channels).To(HaveLen(1))
 				cesiumCH := channels[0]
 				Expect(cesiumCH.Key).To(Equal(ch.Key().Cesium()))
-				Expect(cesiumCH.DataType).To(Equal(cesium.Float64))
-				Expect(cesiumCH.DataRate).To(Equal(5 * cesium.Hz))
+				Expect(cesiumCH.DataType).To(Equal(telem.Float64))
+				Expect(cesiumCH.DataRate).To(Equal(5 * telem.Hz))
 			})
 		})
 		Context("Node is remote", func() {
@@ -84,8 +85,8 @@ var _ = Describe("Create", Ordered, func() {
 				Expect(channels).To(HaveLen(1))
 				cesiumCH := channels[0]
 				Expect(cesiumCH.Key).To(Equal(ch.Key().Cesium()))
-				Expect(cesiumCH.DataType).To(Equal(cesium.Float64))
-				Expect(cesiumCH.DataRate).To(Equal(5 * cesium.Hz))
+				Expect(cesiumCH.DataType).To(Equal(telem.Float64))
+				Expect(cesiumCH.DataRate).To(Equal(5 * telem.Hz))
 			})
 			It("Should not create the channel on another node's ceisum DB", func() {
 				channels, err := builder.Stores[1].Cesium.RetrieveChannel(ch.Key().Cesium())
@@ -95,8 +96,8 @@ var _ = Describe("Create", Ordered, func() {
 			It("Should assign a sequential key to the channels on each node",
 				func() {
 					ch2, err := services[1].NewCreate().
-						WithDataRate(5 * cesium.Hz).
-						WithDataType(cesium.Float64).
+						WithDataRate(5 * telem.Hz).
+						WithDataType(telem.Float64).
 						WithName("SG01").
 						WithNodeID(1).
 						Exec(ctx)

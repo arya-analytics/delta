@@ -1,30 +1,26 @@
 package iterator_test
 
 import (
-	"github.com/arya-analytics/cesium"
 	"github.com/arya-analytics/cesium/testutil/seg"
 	"github.com/arya-analytics/delta/pkg/distribution/channel"
 	"github.com/arya-analytics/delta/pkg/distribution/mock"
-	"github.com/arya-analytics/delta/pkg/distribution/segment/core"
 	"github.com/arya-analytics/delta/pkg/distribution/segment/iterator"
 	"github.com/arya-analytics/x/confluence"
 	"github.com/arya-analytics/x/gorp"
+	"github.com/arya-analytics/x/telem"
 	tmock "github.com/arya-analytics/x/transport/mock"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
-	"time"
 )
 
 var _ = Describe("Local", Ordered, func() {
 	var (
-		log        *zap.Logger
-		builder    *mock.StorageBuilder
-		channelSvc *channel.Service
-		channels   []channel.Channel
-		keys       channel.Keys
-		net        *tmock.Network[iterator.Request, iterator.Response]
+		log     *zap.Logger
+		net     *tmock.Network[iterator.Request, iterator.Response]
+		iter    iterator.Iterator
+		builder *mock.StorageBuilder
+		values  confluence.Outlet[iterator.Response]
 	)
 	BeforeAll(func() {
 		log = zap.NewNop()
@@ -38,21 +34,22 @@ var _ = Describe("Local", Ordered, func() {
 		store1, err := builder.New(log)
 		Expect(err).ToNot(HaveOccurred())
 
-		channelSvc = channel.New(
+		channelSvc := channel.New(
 			store1.Aspen,
 			gorp.Wrap(store1.Aspen),
 			store1.Cesium,
 			channelNet.RouteUnary(""),
 		)
-		channels, err = channelSvc.NewCreate().
+		channels, err := channelSvc.NewCreate().
 			WithName("SG02").
-			WithDataRate(250*cesium.Hz).
-			WithDataType(cesium.Float32).
+			WithDataRate(25*telem.Hz).
+			WithDataType(telem.Float64).
 			WithNodeID(1).
-			ExecN(ctx, 10)
+			ExecN(ctx, 1)
 
 		Expect(err).ToNot(HaveOccurred())
 
+		var keys channel.Keys
 		for _, ch := range channels {
 			keys = append(keys, ch.Key())
 			req, res, err := store1.Cesium.NewCreate().WhereChannels(ch.Key().Cesium()).Stream(ctx)
@@ -60,72 +57,84 @@ var _ = Describe("Local", Ordered, func() {
 			stc := &seg.StreamCreate{
 				Req:               req,
 				Res:               res,
-				SequentialFactory: seg.NewSequentialFactory(dataFactory, 100*cesium.Second, ch.Cesium),
+				SequentialFactory: seg.NewSequentialFactory(dataFactory, 10*telem.Second, ch.Cesium),
 			}
 			stc.CreateCRequestsOfN(10, 1)
 			Expect(stc.CloseAndWait()).To(Succeed())
 		}
-		store1.Cesium.NewCreate().WhereChannels()
-	})
-	AfterAll(func() { Expect(builder.Close()).To(Succeed()) })
-	It("Should correctly iterator through the segments data", func() {
-		store := builder.Stores[1]
-		iter, err := iterator.New(
-			store.Cesium,
+
+		iter, err = iterator.New(
+			store1.Cesium,
 			channelSvc,
-			store.Aspen,
+			store1.Aspen,
 			net.RouteStream("", 0),
-			cesium.TimeRangeMax,
+			telem.TimeRangeMax,
 			keys,
 		)
-		Expect(err).To(BeNil())
-		values := confluence.NewStream[iterator.Response](11)
-		iter.OutTo(values)
-		t0 := time.Now()
-		var segments []core.Segment
-		Expect(iter.First()).To(BeTrue())
-		for i := 0; i < 10; i++ {
-			res := <-values.Outlet()
-			Expect(res.Segments).To(HaveLen(1))
-			Expect(res.Error).To(BeNil())
-			segments = append(segments, res.Segments...)
-		}
-		Expect(iter.Next()).To(BeTrue())
-		for i := 0; i < 10; i++ {
-			res := <-values.Outlet()
-			Expect(res.Segments).To(HaveLen(1))
-			Expect(res.Error).To(BeNil())
-			segments = append(segments, res.Segments...)
-		}
-		logrus.Info("First: ", time.Since(t0))
+		Expect(err).ToNot(HaveOccurred())
+		v := confluence.NewStream[iterator.Response](10)
+		iter.OutTo(v)
+		values = v
 	})
-	FIt("Should exhaust the iterator", func() {
-		store := builder.Stores[1]
-		iter, err := iterator.New(
-			store.Cesium,
-			channelSvc,
-			store.Aspen,
-			net.RouteStream("", 0),
-			cesium.TimeRangeMax,
-			keys,
-		)
-		Expect(err).To(BeNil())
-		values := confluence.NewStream[iterator.Response](11)
-		iter.OutTo(values)
-		t0 := time.Now()
-		iter.First()
-		iter.Exhaust()
-		var segments []core.Segment
-		count := 0
-		for res := range values.Outlet() {
-			count++
-			Expect(res.Error).To(BeNil())
-			segments = append(segments, res.Segments...)
-			if count >= 100 {
-				break
-			}
-		}
-		logrus.Info(time.Since(t0))
-		logrus.Info(len(segments[0].Segment.Data) * len(segments))
+	AfterAll(func() {
+		Expect(iter.Close()).To(Succeed())
+		_, ok := <-values.Outlet()
+		Expect(ok).To(BeFalse())
+		Expect(builder.Close()).To(Succeed())
+	})
+	// Behavioral accuracy tests check whether the iterator returns the correct
+	// boolean acknowledgements and segment counts. These tests DO NOT check
+	// for data accuracy.
+	Context("Behavioral Accuracy", func() {
+		Describe("First", func() {
+			It("Should return the first segment in the iterator", func() {
+				Expect(iter.First()).To(BeTrue())
+				res := <-values.Outlet()
+				Expect(res.Error).To(BeNil())
+				Expect(res.Segments).To(HaveLen(1))
+			})
+		})
+		Describe("SeekFirst + Next", func() {
+			It("Should return the next segment in the iterator", func() {
+				Expect(iter.SeekFirst()).To(BeTrue())
+				Expect(iter.Next()).To(BeTrue())
+				res := <-values.Outlet()
+				Expect(res.Error).To(BeNil())
+				Expect(res.Segments).To(HaveLen(1))
+			})
+		})
+		Describe("SeekLast + Prev", func() {
+			It("Should return the previous segment in the iterator", func() {
+				Expect(iter.SeekLast()).To(BeTrue())
+				Expect(iter.Prev()).To(BeTrue())
+				res := <-values.Outlet()
+				Expect(res.Error).To(BeNil())
+				Expect(res.Segments).To(HaveLen(1))
+			})
+		})
+		Describe("NextSpan", func() {
+			It("Should return the next span in the iterator", func() {
+				Expect(iter.SeekFirst()).To(BeTrue())
+				Expect(iter.NextSpan(20 * telem.Second)).To(BeTrue())
+				res := <-values.Outlet()
+				Expect(res.Error).To(BeNil())
+				Expect(res.Segments).To(HaveLen(1))
+				res2 := <-values.Outlet()
+				Expect(res2.Error).To(BeNil())
+				Expect(res2.Segments).To(HaveLen(1))
+			})
+		})
+		Describe("PrevSpan", func() {
+			It("Should return the previous span in the iterator", func() {
+				Expect(iter.SeekLast()).To(BeTrue())
+				Expect(iter.PrevSpan(20 * telem.Second)).To(BeTrue())
+				res := <-values.Outlet()
+				Expect(res.Error).To(BeNil())
+				Expect(res.Segments).To(HaveLen(1))
+				res2 := <-values.Outlet()
+				Expect(res2.Error).To(BeNil())
+				Expect(res2.Segments).To(HaveLen(1))
+			})
+		})
 	})
 })

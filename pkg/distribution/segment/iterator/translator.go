@@ -7,7 +7,6 @@ import (
 	"github.com/arya-analytics/x/confluence"
 	"github.com/arya-analytics/x/telem"
 	"github.com/cockroachdb/errors"
-	"github.com/sirupsen/logrus"
 )
 
 // emitter translates iterator commands into requests and writes them to a stream.
@@ -69,7 +68,6 @@ func (e *emitter) emit(req Request) {
 }
 
 func executeRequest(ctx context.Context, host node.ID, iter cesium.StreamIterator, req Request) Response {
-	logrus.Infof("Executing command %v on node %s", req.Command, host)
 	switch req.Command {
 	case Open:
 		ack := newAck(host, req.Command, false)

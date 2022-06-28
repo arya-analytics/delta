@@ -9,7 +9,7 @@ type responseFilter struct {
 	confluence.Filter[Response]
 }
 
-func newResponseFilter(rejects confluence.Inlet[Response]) responseSegment {
+func newResponseFilter(rejects confluence.Inlet[Response]) *responseFilter {
 	rs := &responseFilter{}
 	rs.Filter.Rejects = rejects
 	rs.Filter.Filter = rs.filter

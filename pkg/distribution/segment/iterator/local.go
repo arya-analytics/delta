@@ -9,6 +9,7 @@ import (
 	"github.com/arya-analytics/x/signal"
 	"github.com/arya-analytics/x/telem"
 	"github.com/cockroachdb/errors"
+	"io"
 )
 
 type localIterator struct {
@@ -120,11 +121,19 @@ func newCesiumResponseTranslator(keyMap map[cesium.ChannelKey]channel.Key) *cesi
 
 func (te *cesiumResponseTranslator) translate(
 	ctx signal.Context,
-	req cesium.RetrieveResponse,
+	res cesium.RetrieveResponse,
 ) (Response, bool, error) {
+	if errors.Is(res.Error, io.EOF) {
+		return Response{
+			Variant: ResponseVariantAck,
+			Error:   res.Error,
+			Command: EOF,
+			Ack:     res.Error == io.EOF,
+		}, true, nil
+	}
 	return Response{
 		Variant:  ResponseVariantData,
-		Error:    req.Error,
-		Segments: te.wrapper.Wrap(req.Segments),
+		Error:    res.Error,
+		Segments: te.wrapper.Wrap(res.Segments),
 	}, true, nil
 }

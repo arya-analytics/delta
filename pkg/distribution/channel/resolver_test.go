@@ -1,11 +1,11 @@
 package channel_test
 
 import (
-	"github.com/arya-analytics/cesium"
 	"github.com/arya-analytics/delta/pkg/distribution/channel"
 	"github.com/arya-analytics/delta/pkg/distribution/mock"
 	"github.com/arya-analytics/x/address"
 	"github.com/arya-analytics/x/gorp"
+	"github.com/arya-analytics/x/telem"
 	tmock "github.com/arya-analytics/x/transport/mock"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -27,8 +27,8 @@ var _ = Describe("Resolver", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 		ch, err := channel.New(store1.Aspen, gorp.Wrap(store1.Aspen), store1.Cesium, net.RouteUnary("")).
 			NewCreate().
-			WithDataRate(5 * cesium.Hz).
-			WithDataType(cesium.Float64).
+			WithDataRate(5 * telem.Hz).
+			WithDataType(telem.Float64).
 			WithName("SG01").
 			WithNodeID(1).
 			Exec(ctx)

@@ -6,7 +6,6 @@ import (
 	"github.com/arya-analytics/x/confluence"
 	"github.com/arya-analytics/x/filter"
 	"github.com/arya-analytics/x/signal"
-	"github.com/sirupsen/logrus"
 	"time"
 )
 
@@ -16,15 +15,25 @@ type synchronizer struct {
 	confluence.UnarySink[Response]
 }
 
-func (a *synchronizer) sync(ctx context.Context, command Command) bool {
+func (a *synchronizer) sync(
+	ctx context.Context,
+	command Command) bool {
+	_, ok := a.syncWithRes(ctx, command)
+	return ok
+}
+
+func (a *synchronizer) syncWithRes(
+	ctx context.Context,
+	command Command,
+) ([]Response, bool) {
 	ctx, cancel := signal.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 	acknowledgements := make([]node.ID, 0, len(a.nodeIDs))
-	logrus.Infof("Listening for acknowledgements for command %v ", command)
+	responses := make([]Response, 0, len(a.nodeIDs))
 	for {
 		select {
 		case <-ctx.Done():
-			return false
+			return responses, false
 		case r, ok := <-a.In.Outlet():
 			if r.Command != command {
 				continue
@@ -37,14 +46,14 @@ func (a *synchronizer) sync(ctx context.Context, command Command) bool {
 			if !filter.ElementOf(acknowledgements, r.NodeID) {
 				// If any node does not synchronizer the request as valid, then we consider
 				// the entire command as invalid.
-				logrus.Infof("Receive ack from %s for command %v", r.NodeID, command)
 				if !r.Ack {
-					return false
+					return responses, false
 				}
 				acknowledgements = append(acknowledgements, r.NodeID)
+				responses = append(responses, r)
 			}
 			if len(acknowledgements) == len(a.nodeIDs) {
-				return true
+				return responses, true
 			}
 		}
 	}
