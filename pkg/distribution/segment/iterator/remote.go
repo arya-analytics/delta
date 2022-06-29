@@ -1,6 +1,7 @@
 package iterator
 
 import (
+	"fmt"
 	"github.com/arya-analytics/delta/pkg/distribution/channel"
 	"github.com/arya-analytics/x/address"
 	"github.com/arya-analytics/x/confluence"
@@ -12,9 +13,10 @@ type remoteIterator struct {
 	target    address.Address
 	requests  *confluence.Sender[Request]
 	responses *confluence.Receiver[Response]
+	flowing   bool
 }
 
-func (c *remoteIterator) Flow(ctx signal.Context) {
+func (c *remoteIterator) Flow(ctx signal.Context, opts ...confluence.FlowOption) {
 	c.requests.Flow(ctx)
 	c.responses.Flow(ctx)
 }
@@ -45,12 +47,10 @@ func newRemoteIterator(
 		return nil, err
 	}
 
-	sender := &confluence.Sender[Request]{Sender: stream}
-	receiver := &confluence.Receiver[Response]{Receiver: stream}
+	sender := &confluence.Sender[Request]{Sender: stream, Name: fmt.Sprintf("Client %s", target)}
+	receiver := &confluence.Receiver[Response]{Receiver: stream, Name: "Client"}
 
 	iter := &remoteIterator{requests: sender, responses: receiver}
-
-	iter.Flow(ctx)
-
-	return iter, nil
+	gated := confluence.GateTranslator[Request, Response](iter)
+	return gated, nil
 }

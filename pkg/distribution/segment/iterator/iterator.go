@@ -120,14 +120,14 @@ func New(
 
 	requestBuilder.RouteUnary("emitter", "broadcast", 10)
 	requestBuilder.Route(confluence.MultiRouter[Request]{
-		FromAddresses: []address.Address{"broadcast"},
-		ToAddresses:   clientAddresses,
+		SourceTargets: []address.Address{"broadcast"},
+		SinkTargets:   clientAddresses,
 		Capacity:      len(clientAddresses) + 5,
 	})
 
 	responseBuilder.Route(confluence.MultiRouter[Response]{
-		FromAddresses: clientAddresses,
-		ToAddresses:   []address.Address{"filter"},
+		SourceTargets: clientAddresses,
+		SinkTargets:   []address.Address{"filter"},
 		Stitch:        confluence.StitchUnary,
 		Capacity:      len(clientAddresses) + 5,
 	})
@@ -186,8 +186,7 @@ func (i *iterator) SeekFirst() bool { i.emit.SeekFirst(); return i.ack(SeekFirst
 func (i *iterator) SeekLast() bool { i.emit.SeekLast(); return i.ack(SeekLast) }
 
 func (i *iterator) SeekLT(stamp telem.TimeStamp) bool {
-	i.emit.SeekLT(
-		stamp)
+	i.emit.SeekLT(stamp)
 	return i.ack(SeekLT)
 }
 
@@ -197,6 +196,7 @@ func (i *iterator) SeekGE(stamp telem.TimeStamp) bool {
 }
 
 func (i *iterator) Close() error {
+
 	// Wait for all iterator internal operations to complete.
 	i.emit.Close()
 
@@ -229,7 +229,7 @@ func (i *iterator) Close() error {
 		)
 	}
 
-	i.Filter.Out.Close()
+	close(i.Filter.Out.Inlet())
 
 	return nil
 }

@@ -18,7 +18,7 @@ type localIterator struct {
 	cesiumResponses confluence.Segment[cesium.RetrieveResponse]
 }
 
-func (s *localIterator) Flow(ctx signal.Context) {
+func (s *localIterator) Flow(ctx signal.Context, opts ...confluence.FlowOption) {
 	s.requests.Flow(ctx)
 	s.responses.Flow(ctx)
 	s.cesiumResponses.Flow(ctx)
@@ -93,11 +93,10 @@ type requestExecutor struct {
 	confluence.CoreTranslator[Request, Response]
 }
 
-func newRequestExecutor(host node.ID, iter cesium.StreamIterator) *requestExecutor {
+func newRequestExecutor(host node.ID, iter cesium.StreamIterator) confluence.Translator[Request, Response] {
 	te := &requestExecutor{iter: iter, host: host}
-	te.CoreTranslator.RepeatedFlow = false
 	te.CoreTranslator.Translate = te.execute
-	return te
+	return confluence.GateTranslator[Request, Response](te)
 }
 
 func (te *requestExecutor) execute(ctx signal.Context, req Request) (Response, bool, error) {
@@ -111,12 +110,12 @@ type cesiumResponseTranslator struct {
 	confluence.CoreTranslator[cesium.RetrieveResponse, Response]
 }
 
-func newCesiumResponseTranslator(keyMap map[cesium.ChannelKey]channel.Key) *cesiumResponseTranslator {
+func newCesiumResponseTranslator(keyMap map[cesium.ChannelKey]channel.
+Key) confluence.Translator[cesium.RetrieveResponse, Response] {
 	wrapper := &core.CesiumWrapper{KeyMap: keyMap}
 	ts := &cesiumResponseTranslator{wrapper: wrapper}
 	ts.CoreTranslator.Translate = ts.translate
-	ts.CoreTranslator.RepeatedFlow = false
-	return ts
+	return confluence.GateTranslator[cesium.RetrieveResponse, Response](ts)
 }
 
 func (te *cesiumResponseTranslator) translate(

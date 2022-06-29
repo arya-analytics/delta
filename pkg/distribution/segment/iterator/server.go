@@ -14,8 +14,8 @@ type server struct {
 	db   cesium.DB
 }
 
-func newServer(db cesium.DB, transport Transport) *server {
-	sf := &server{db: db}
+func NewServer(db cesium.DB, host node.ID, transport Transport) *server {
+	sf := &server{db: db, host: host}
 	transport.Handle(sf.Handle)
 	return sf
 }
@@ -23,7 +23,10 @@ func newServer(db cesium.DB, transport Transport) *server {
 // Handle handles incoming requests from the transport.
 func (sf *server) Handle(_ctx context.Context, server Server) error {
 	ctx, cancel := signal.WithCancel(_ctx)
-	defer cancel()
+	defer func() {
+		cancel()
+		ctx.WaitOnAll()
+	}()
 
 	// Block until we receive the first request from the remoteIterator. This message should
 	// have an Open command that provides context for opening the cesium iterator.
@@ -37,11 +40,11 @@ func (sf *server) Handle(_ctx context.Context, server Server) error {
 
 	// receiver receives requests from the server and pipes them into the
 	// requestPipeline.
-	receiver := &confluence.Receiver[Request]{Receiver: server}
+	receiver := confluence.GateSource[Request](&confluence.Receiver[Request]{Receiver: server, Name: "Server"})
 
 	// sender receives responses from the response pipeline and sends
 	// them over the network.
-	sender := &confluence.Sender[Response]{Sender: server}
+	sender := confluence.GateSink[Response](&confluence.Sender[Response]{Sender: server, Name: "Server"})
 
 	iter, err := newLocalIterator(sf.db, sf.host, req.Range, req.Keys)
 	if err != nil {
@@ -58,6 +61,7 @@ func (sf *server) Handle(_ctx context.Context, server Server) error {
 	receiver.OutTo(requests)
 	iter.InFrom(requests)
 
+	iter.Flow(ctx)
 	receiver.Flow(ctx)
 	sender.Flow(ctx)
 
