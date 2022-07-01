@@ -5,17 +5,17 @@ import (
 	"github.com/arya-analytics/x/signal"
 )
 
-type responseFilter struct {
+type ackFilter struct {
 	confluence.Filter[Response]
 }
 
-func newResponseFilter(rejects confluence.Inlet[Response]) *responseFilter {
-	rs := &responseFilter{}
-	rs.Filter.Rejects = rejects
+func newAckRouter(ackMessages confluence.Inlet[Response]) *ackFilter {
+	rs := &ackFilter{}
+	rs.Filter.Rejects = ackMessages
 	rs.Filter.Filter = rs.filter
 	return rs
 }
 
-func (rs *responseFilter) filter(ctx signal.Context, res Response) (bool, error) {
+func (rs *ackFilter) filter(ctx signal.Context, res Response) (bool, error) {
 	return res.Variant == DataResponse, nil
 }

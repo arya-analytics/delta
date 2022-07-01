@@ -34,7 +34,7 @@ func (a *synchronizer) sync(ctx context.Context, command Command) (bool, error) 
 				)
 			}
 			if !filter.ElementOf(acknowledgements, r.NodeID) {
-				// If any node does not synchronizer the request as valid, then we consider
+				// If any node does not consider the request as valid, then we consider
 				// the entire command as invalid.
 				if !r.Ack {
 					return false, r.Error

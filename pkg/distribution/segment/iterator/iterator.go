@@ -78,7 +78,7 @@ func New(
 	db cesium.DB,
 	svc *channel.Service,
 	resolver aspen.HostResolver,
-	transport Transport,
+	tran Transport,
 	rng telem.TimeRange,
 	keys channel.Keys,
 ) (Iterator, error) {
@@ -94,128 +94,202 @@ func New(
 	// Next we determine IDs of all the target nodes we need to open iterators on.
 	batch := proxy.NewBatchFactory[channel.Key](resolver.HostID()).Batch(keys)
 
-	var clients []confluence.Translator[Request, Response]
+	var (
+		needRemote        = len(batch.Remote) > 0
+		needLocal         = len(batch.Local) > 0
+		requests          = confluence.NewPipeline[Request]()
+		responses         = confluence.NewPipeline[Response]()
+		numSenders        = len(keys.Nodes())
+		numReceivers      = 0
+		receiverAddresses []address.Address
+	)
 
-	if len(batch.Local) > 0 {
-		localClient, err := newLocalIterator(db, resolver.HostID(), rng, batch.Local)
+	if needRemote {
+		numSenders += 1
+
+		sender, receivers, err := openRemoteIterators(ctx, tran, batch.Remote, rng, resolver)
 		if err != nil {
 			cancel()
 			return nil, err
 		}
-		clients = append(clients, localClient)
+
+		// Set up our sender as a sink for the request pipeline.
+		requests.Sink("sender", sender)
+
+		// Set up our remote receivers as sources for the response pipeline.
+		receiverAddresses = make([]address.Address, len(receivers))
+		for i, c := range receivers {
+			addr := address.Address(fmt.Sprintf("client-%v", i+1))
+			receiverAddresses[i] = addr
+			responses.Source(addr, c)
+		}
 	}
 
-	for targetNode, _keys := range batch.Remote {
-		targetAddr, err := resolver.Resolve(targetNode)
+	if needLocal {
+		numSenders += 1
+
+		localIter, err := newLocalIterator(db, resolver.HostID(), rng, batch.Local)
 		if err != nil {
 			cancel()
 			return nil, err
 		}
-		remoteIter, err := newRemoteIterator(ctx, transport, targetAddr, _keys, rng)
-		if err != nil {
-			cancel()
-			return nil, err
-		}
-		clients = append(clients, remoteIter)
+
+		addr := address.Address("local")
+
+		// Set up our local iterator as a sink for the request pipeline.
+		requests.Sink(addr, localIter)
+		// And as a source for the response pipeline.
+		responses.Source(addr, localIter)
+
+		receiverAddresses = append(receiverAddresses, addr)
 	}
 
-	requests := confluence.NewPipeline[Request]()
-	responses := confluence.NewPipeline[Response]()
+	// The synchronizer checks that all nodes have acknowledged an iteration
+	// request. This is used to return ok = true from the iterator methods.
+	sync := &synchronizer{nodeIDs: keys.Nodes(), timeout: 1 * time.Second}
 
-	clientAddresses := make([]address.Address, len(clients))
-	for i, c := range clients {
-		addr := address.Address(fmt.Sprintf("client-%d", i+1))
-		clientAddresses[i] = addr
-		requests.Sink(addr, c)
-		responses.Source(addr, c)
-	}
-
-	// synchronizes iterator acknowledgements from all target node. If a response
-	// from a target node is not received within the timeout, the iterator will
-	// return false.
-	sync := &synchronizer{nodeIDs: keys.Nodes(), timeout: 5 * time.Second}
-	syncMessages := confluence.NewStream[Response](len(clientAddresses))
-	filter := newResponseFilter(syncMessages)
+	// Open a ackFilter that will route acknowledgement responses to the iterator
+	// synchronizer. We expect an ack from each remote iterator as well as the
+	// local iterator, so we set our buffer cap at numReceivers.
+	syncMessages := confluence.NewStream[Response](numReceivers)
 	sync.InFrom(syncMessages)
-	responses.Segment("filter", filter)
 
-	// emits iterator method calls as req to the stream.
+	// Send rejects from the ackFilter to the synchronizer.
+	filter := newAckRouter(syncMessages)
+	responses.Sink("filter", filter)
+
+	// emitter emits method calls as requests to stream.
 	emit := &emitter{}
 	requests.Source("emitter", emit)
 
-	// broadcasts requests to all target nodes.
-	broadcast := &requestBroadcaster{}
-	requests.Segment("broadcast", broadcast)
+	requestBuilder := requests.NewRouteBuilder()
+	responseBuilder := responses.NewRouteBuilder()
 
-	iter := &iterator{
-		emit:           emit,
-		sync:           sync,
-		wg:             ctx,
-		shutdown:       cancel,
-		responseFilter: filter,
+	var routeEmitterTo address.Address
+
+	// We need to configure different pipelines to optimize for particular cases.
+	if needRemote && needLocal {
+		// Open a broadcaster that will multiply requests to both the local and remote
+		// iterators.
+		requests.Sink("broadcaster", &confluence.Confluence[Request]{})
+		routeEmitterTo = "broadcaster"
+
+		// We use confluence.StitchWeave here to dedicate a channel to both the
+		// sender and local, so that they both receive a copy of the emitted request.
+		requestBuilder.Route(confluence.MultiRouter[Request]{
+			SourceTargets: []address.Address{"broadcaster"},
+			SinkTargets:   []address.Address{"sender", "local"},
+			Capacity:      1,
+			Stitch:        confluence.StitchWeave,
+		})
+	} else if needRemote {
+		// If we only have remote iterators, we can skip the broadcasting step
+		// and forward requests from the emitter directly to the sender.
+		routeEmitterTo = "sender"
+	} else {
+		// If we only have local iterators, we can skip the broadcasting step
+		// and forward requests from the emitter directly to the local iterator.
+		routeEmitterTo = "local"
 	}
 
-	responseBuilder := responses.NewRouteBuilder()
-	requestBuilder := requests.NewRouteBuilder()
+	requestBuilder.RouteUnary("emitter", routeEmitterTo, 0)
 
-	requestBuilder.RouteUnary("emitter", "broadcast", 10)
-	requestBuilder.Route(confluence.MultiRouter[Request]{
-		SourceTargets: []address.Address{"broadcast"},
-		SinkTargets:   clientAddresses,
-		Capacity:      len(clientAddresses) + 5,
-	})
-
+	// Route all responses from our receivers to the ackFilter. Using a single channel
+	// to link all the receivers to the ackFilter with a buffer capacity allowing
+	// for 1 response per receiver at a time.
 	responseBuilder.Route(confluence.MultiRouter[Response]{
-		SourceTargets: clientAddresses,
+		SourceTargets: receiverAddresses,
 		SinkTargets:   []address.Address{"filter"},
 		Stitch:        confluence.StitchUnary,
-		Capacity:      len(clientAddresses) + 5,
+		Capacity:      numReceivers,
 	})
 
-	requestBuilder.PanicIfErr()
 	responseBuilder.PanicIfErr()
+	requestBuilder.PanicIfErr()
 
 	responses.Flow(ctx)
 	requests.Flow(ctx)
 
-	return iter, nil
+	return &iterator{
+		emitter:   emit,
+		sync:      sync,
+		wg:        ctx,
+		shutdown:  cancel,
+		ackFilter: filter,
+	}, nil
 }
 
 type iterator struct {
-	emit     *emitter
+	emitter  *emitter
 	sync     *synchronizer
 	shutdown context.CancelFunc
 	wg       signal.WaitGroup
 	_error   error
-	*responseFilter
+	*ackFilter
 }
 
-func (i *iterator) Next() bool { i.emit.next(); return i.ack(Next) }
+func (i *iterator) Next() bool {
+	i.emitter.next()
+	return i.ack(Next)
+}
 
-func (i *iterator) Prev() bool { i.emit.Prev(); return i.ack(Prev) }
+func (i *iterator) Prev() bool {
+	i.emitter.Prev()
+	return i.ack(Prev)
+}
 
-func (i *iterator) First() bool { i.emit.First(); return i.ack(First) }
+func (i *iterator) First() bool {
+	i.emitter.First()
+	return i.ack(First)
+}
 
-func (i *iterator) Last() bool { i.emit.Last(); return i.ack(Last) }
+func (i *iterator) Last() bool {
+	i.emitter.Last()
+	return i.ack(Last)
+}
 
-func (i *iterator) NextSpan(span telem.TimeSpan) bool { i.emit.NextSpan(span); return i.ack(NextSpan) }
+func (i *iterator) NextSpan(span telem.TimeSpan) bool {
+	i.emitter.NextSpan(span)
+	return i.ack(NextSpan)
+}
 
-func (i *iterator) PrevSpan(span telem.TimeSpan) bool { i.emit.PrevSpan(span); return i.ack(PrevSpan) }
+func (i *iterator) PrevSpan(span telem.TimeSpan) bool {
+	i.emitter.PrevSpan(span)
+	return i.ack(PrevSpan)
+}
 
-func (i *iterator) NextRange(tr telem.TimeRange) bool { i.emit.NextRange(tr); return i.ack(NextRange) }
+func (i *iterator) NextRange(tr telem.TimeRange) bool {
+	i.emitter.NextRange(tr)
+	return i.ack(NextRange)
+}
 
-func (i *iterator) SeekFirst() bool { i.emit.SeekFirst(); return i.ack(SeekFirst) }
+func (i *iterator) SeekFirst() bool {
+	i.emitter.SeekFirst()
+	return i.ack(SeekFirst)
+}
 
-func (i *iterator) SeekLast() bool { i.emit.SeekLast(); return i.ack(SeekLast) }
+func (i *iterator) SeekLast() bool {
+	i.emitter.SeekLast()
+	return i.ack(SeekLast)
+}
 
-func (i *iterator) SeekLT(stamp telem.TimeStamp) bool { i.emit.SeekLT(stamp); return i.ack(SeekLT) }
+func (i *iterator) SeekLT(stamp telem.TimeStamp) bool {
+	i.emitter.SeekLT(stamp)
+	return i.ack(SeekLT)
+}
 
-func (i *iterator) SeekGE(stamp telem.TimeStamp) bool { i.emit.SeekGE(stamp); return i.ack(SeekGE) }
+func (i *iterator) SeekGE(stamp telem.TimeStamp) bool {
+	i.emitter.SeekGE(stamp)
+	return i.ack(SeekGE)
+}
 
-func (i *iterator) Exhaust() bool { i.emit.Exhaust(); return i.ack(Exhaust) }
+func (i *iterator) Exhaust() bool {
+	i.emitter.Exhaust()
+	return i.ack(Exhaust)
+}
 
 func (i *iterator) Valid() bool {
-	i.emit.Valid()
+	i.emitter.Valid()
 	return i.ack(Valid) && i.error() == nil
 }
 
@@ -235,7 +309,7 @@ func (i *iterator) Error() error {
 	if i.error() != nil {
 		return i.error()
 	}
-	i.emit.Error()
+	i.emitter.Error()
 	ok, err := i.ackWithErr(Error)
 	if err != nil {
 		return err
@@ -246,7 +320,10 @@ func (i *iterator) Error() error {
 	return nil
 }
 
-func (i *iterator) ack(cmd Command) bool { ok, _ := i.ackWithErr(cmd); return ok }
+func (i *iterator) ack(cmd Command) bool {
+	ok, _ := i.ackWithErr(cmd)
+	return ok
+}
 
 func (i *iterator) ackWithErr(cmd Command) (bool, error) {
 	return i.sync.sync(context.Background(), cmd)
@@ -255,7 +332,7 @@ func (i *iterator) ackWithErr(cmd Command) (bool, error) {
 func (i *iterator) Close() error {
 
 	// Wait for all iterator internal operations to complete.
-	i.emit.Close()
+	i.emitter.Close()
 
 	// Wait for all nodes to acknowledge a safe closure.
 	closeOk := i.ack(Close)
@@ -273,9 +350,7 @@ func (i *iterator) Close() error {
 	if !closeOk {
 		return errors.New("[segment.Iterator] - negative ack on close. node probably unreachable")
 	}
-
 	close(i.Filter.Out.Inlet())
-
 	return nil
 }
 

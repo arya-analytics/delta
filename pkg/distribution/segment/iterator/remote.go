@@ -1,55 +1,56 @@
 package iterator
 
 import (
+	"github.com/arya-analytics/aspen"
 	"github.com/arya-analytics/delta/pkg/distribution/channel"
+	"github.com/arya-analytics/delta/pkg/distribution/node"
 	"github.com/arya-analytics/x/address"
 	"github.com/arya-analytics/x/confluence"
 	"github.com/arya-analytics/x/signal"
 	"github.com/arya-analytics/x/telem"
 )
 
-type remoteIterator struct {
-	target    address.Address
-	requests  *confluence.Sender[Request]
-	responses *confluence.Receiver[Response]
-	flowing   bool
-}
-
-func (c *remoteIterator) Flow(ctx signal.Context, opts ...confluence.FlowOption) {
-	c.requests.Flow(ctx)
-	c.responses.Flow(ctx)
-}
-
-func (c *remoteIterator) OutTo(inlets ...confluence.Inlet[Response]) { c.responses.OutTo(inlets...) }
-
-func (c *remoteIterator) InFrom(outlets ...confluence.Outlet[Request]) { c.requests.InFrom(outlets...) }
-
-func newRemoteIterator(
+func openRemoteIterators(
 	ctx signal.Context,
-	transport Transport,
+	tran Transport,
+	targets map[node.ID][]channel.Key,
+	rng telem.TimeRange,
+	resolver aspen.HostResolver,
+) (*confluence.MultiSender[Request], []*confluence.Receiver[Response], error) {
+	sender := &confluence.MultiSender[Request]{}
+	receivers := make([]*confluence.Receiver[Response], 0, len(targets))
+	for nodeID, keys := range targets {
+		targetAddr, err := resolver.Resolve(nodeID)
+		if err != nil {
+			return sender, receivers, err
+		}
+		client, err := openRemoteClient(ctx, tran, targetAddr, keys, rng)
+		if err != nil {
+			return sender, receivers, err
+		}
+		sender.Senders = append(sender.Senders, client)
+		receivers = append(receivers, &confluence.Receiver[Response]{Receiver: client})
+	}
+	return sender, receivers, nil
+}
+
+func openRemoteClient(
+	ctx signal.Context,
+	tran Transport,
 	target address.Address,
 	keys channel.Keys,
 	rng telem.TimeRange,
-) (confluence.Translator[Request, Response], error) {
-	stream, err := transport.Stream(ctx, target)
+) (Client, error) {
+	stream, err := tran.Stream(ctx, target)
 	if err != nil {
 		return nil, err
 	}
 
 	// Send an open request to the transport. This will open a localIterator  on the
 	// target node.
-	if err := stream.Send(Request{
+	return stream, stream.Send(Request{
 		Command: Open,
 		Keys:    keys,
 		Range:   rng,
-	}); err != nil {
-		return nil, err
-	}
-
-	sender := &confluence.Sender[Request]{Sender: stream}
-	receiver := &confluence.Receiver[Response]{Receiver: stream}
-
-	iter := &remoteIterator{requests: sender, responses: receiver}
-	gated := confluence.GateTranslator[Request, Response](iter)
-	return gated, nil
+	})
 }
