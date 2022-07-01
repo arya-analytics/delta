@@ -20,12 +20,15 @@ func NewServer(db cesium.DB, host node.ID, transport Transport) *server {
 	return sf
 }
 
-// Handle handles incoming requests from the transport.
+// Handle handles incoming req from the transport.
 func (sf *server) Handle(_ctx context.Context, server Server) error {
 	ctx, cancel := signal.WithCancel(_ctx)
 	defer func() {
 		cancel()
-		ctx.WaitOnAll()
+		if err := ctx.WaitOnAll(); err != nil && err != context.
+			Canceled && err != context.DeadlineExceeded {
+			panic(err)
+		}
 	}()
 
 	// Block until we receive the first request from the remoteIterator. This message should
@@ -38,20 +41,17 @@ func (sf *server) Handle(_ctx context.Context, server Server) error {
 		return errors.New("[segment.iterator] - server expected Open command")
 	}
 
-	// receiver receives requests from the server and pipes them into the
+	// receiver receives req from the server and pipes them into the
 	// requestPipeline.
-	receiver := confluence.GateSource[Request](&confluence.Receiver[Request]{Receiver: server, Name: "Server"})
+	receiver := confluence.GateSource[Request](&confluence.Receiver[Request]{Receiver: server})
 
-	// sender receives responses from the response pipeline and sends
+	// sender receives res from the response pipeline and sends
 	// them over the network.
-	sender := confluence.GateSink[Response](&confluence.Sender[Response]{Sender: server, Name: "Server"})
+	sender := confluence.GateSink[Response](&confluence.Sender[Response]{Sender: server})
 
 	iter, err := newLocalIterator(sf.db, sf.host, req.Range, req.Keys)
 	if err != nil {
-		return errors.Wrap(
-			err,
-			"[segment.iterator] - server failed to open cesium iterator",
-		)
+		return errors.Wrap(err, "[segment.iterator] - cesium iterator failed to open")
 	}
 
 	requests := confluence.NewStream[Request](0)
@@ -65,5 +65,8 @@ func (sf *server) Handle(_ctx context.Context, server Server) error {
 	receiver.Flow(ctx)
 	sender.Flow(ctx)
 
+	// The only way for hte iterator to exit is if the client closes the connection
+	// or cancels the context. In both of these cases, the receiver will detect the
+	// exit, so we just need to wait for it.
 	return ctx.WaitOnAny(true)
 }

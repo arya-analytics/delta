@@ -17,20 +17,61 @@ import (
 )
 
 type Iterator interface {
+	// Source emits values from the iterator to a channel (confluence.Stream).
+	// To bind a stream, call Iterator.OutTo(stream). The iterator will then send
+	// all values to it. Iterator.OutTo must be called before any iteration methods,
+	// or else values will be sent to a nil stream.
 	confluence.Source[Response]
+	// Next retrieves the next segment of each channel's data.
+	// Returns true if the current Iterator.View is pointing to any valid segments.
+	// It's important to note that if channel data is non-contiguous, calls to Next
+	// may return segments that occupy different ranges of time.
 	Next() bool
+	// Prev retrieves the previous segment of each channel's data.
+	// Returns true if the current Iterator.View is pointing to any valid segments.
+	// It's important to note that if channel data is non-contiguous, calls to Prev
+	// may return segments that occupy different ranges of time.
 	Prev() bool
+	// First returns the first segment of each channel's data.
+	// Returns true if the current Iterator.View is pointing to any valid segments.
+	// It's important to note that if channel data is non-contiguous, calls to First
+	// may return segments that occupy different ranges of time.
 	First() bool
+	// Last returns the last segment of each channel's data.
+	// Returns true if the current Iterator.View is pointing to any valid segments.
+	// It's important to note that if channel data is non-contiguous, calls to Last
+	// may return segments that occupy different ranges of time.
 	Last() bool
+	// NextSpan reads all channel data occupying the next span of time. Returns true
+	// if the current Iterator.View is pointing to any valid segments.
 	NextSpan(span telem.TimeSpan) bool
+	// PrevSpan reads all channel data occupying the previous span of time. Returns true
+	// if the current Iterator.View is pointing to any valid segments.
 	PrevSpan(span telem.TimeSpan) bool
+	// NextRange seeks the Iterator to the start of the range and reads all channel data
+	// until the end of the range.
 	NextRange(tr telem.TimeRange) bool
+	// SeekFirst seeks the iterator the start of the iterator range.
+	// Returns true if the current Iterator.View is pointing to any valid segments.
 	SeekFirst() bool
+	// SeekLast seeks the iterator the end of the iterator range.
+	// Returns true if the current Iterator.View is pointing to any valid segments.
 	SeekLast() bool
+	// SeekLT seeks the iterator to the first whose timestamp is less than or equal
+	// to the given timestamp. Returns true if the current Iterator.View is pointing
+	// to any valid segments.
 	SeekLT(t telem.TimeStamp) bool
+	// SeekGE seeks the iterator to the first whose timestamp is greater than the
+	// given timestamp. Returns true if the current Iterator.View is pointing to
+	// any valid segments.
 	SeekGE(t telem.TimeStamp) bool
-	Exhaust()
+	// Close closes the Iterator, ensuring that all in-progress reads complete
+	// before closing the Source outlet. All iterators must be Closed, or the
+	// distribution layer will panic.
 	Close() error
+	Valid() bool
+	Error() error
+	Exhaust() bool
 }
 
 func New(
@@ -78,34 +119,33 @@ func New(
 		clients = append(clients, remoteIter)
 	}
 
-	requestPipeline := confluence.NewPipeline[Request]()
-	responsePipeline := confluence.NewPipeline[Response]()
+	requests := confluence.NewPipeline[Request]()
+	responses := confluence.NewPipeline[Response]()
 
 	clientAddresses := make([]address.Address, len(clients))
 	for i, c := range clients {
-		addr := address.Address(fmt.Sprintf("c-%d", i+1))
+		addr := address.Address(fmt.Sprintf("client-%d", i+1))
 		clientAddresses[i] = addr
-		requestPipeline.Sink(addr, c)
-		responsePipeline.Source(addr, c)
+		requests.Sink(addr, c)
+		responses.Source(addr, c)
 	}
 
 	// synchronizes iterator acknowledgements from all target node. If a response
 	// from a target node is not received within the timeout, the iterator will
 	// return false.
 	sync := &synchronizer{nodeIDs: keys.Nodes(), timeout: 5 * time.Second}
-	syncMessages := confluence.NewStream[Response](10)
+	syncMessages := confluence.NewStream[Response](len(clientAddresses))
 	filter := newResponseFilter(syncMessages)
 	sync.InFrom(syncMessages)
+	responses.Segment("filter", filter)
 
-	responsePipeline.Segment("filter", filter)
-
-	// emits iterator method calls as requests to the stream.
+	// emits iterator method calls as req to the stream.
 	emit := &emitter{}
-	requestPipeline.Source("emitter", emit)
+	requests.Source("emitter", emit)
 
-	// broadcast broadcasts requests to all target nodes.
+	// broadcasts requests to all target nodes.
 	broadcast := &requestBroadcaster{}
-	requestPipeline.Segment("broadcast", broadcast)
+	requests.Segment("broadcast", broadcast)
 
 	iter := &iterator{
 		emit:           emit,
@@ -115,8 +155,8 @@ func New(
 		responseFilter: filter,
 	}
 
-	responseBuilder := responsePipeline.NewRouteBuilder()
-	requestBuilder := requestPipeline.NewRouteBuilder()
+	responseBuilder := responses.NewRouteBuilder()
+	requestBuilder := requests.NewRouteBuilder()
 
 	requestBuilder.RouteUnary("emitter", "broadcast", 10)
 	requestBuilder.Route(confluence.MultiRouter[Request]{
@@ -135,12 +175,8 @@ func New(
 	requestBuilder.PanicIfErr()
 	responseBuilder.PanicIfErr()
 
-	responsePipeline.Flow(ctx)
-	requestPipeline.Flow(ctx)
-
-	signal.IterTransient(ctx, func(err error) {
-		syncMessages.Inlet() <- Response{Error: err, Variant: ResponseVariantData}
-	})
+	responses.Flow(ctx)
+	requests.Flow(ctx)
 
 	return iter, nil
 }
@@ -150,13 +186,8 @@ type iterator struct {
 	sync     *synchronizer
 	shutdown context.CancelFunc
 	wg       signal.WaitGroup
+	_error   error
 	*responseFilter
-}
-
-func (i *iterator) ack(cmd Command) bool { return i.sync.sync(context.Background(), cmd) }
-
-func (i *iterator) ackRes(cmd Command) ([]Response, bool) {
-	return i.sync.syncWithRes(context.Background(), cmd)
 }
 
 func (i *iterator) Next() bool { i.emit.next(); return i.ack(Next) }
@@ -169,30 +200,56 @@ func (i *iterator) Last() bool { i.emit.Last(); return i.ack(Last) }
 
 func (i *iterator) NextSpan(span telem.TimeSpan) bool { i.emit.NextSpan(span); return i.ack(NextSpan) }
 
-func (i *iterator) PrevSpan(span telem.TimeSpan) bool {
-	i.emit.PrevSpan(
-		span)
-	return i.ack(PrevSpan)
-}
+func (i *iterator) PrevSpan(span telem.TimeSpan) bool { i.emit.PrevSpan(span); return i.ack(PrevSpan) }
 
-func (i *iterator) NextRange(tr telem.TimeRange) bool {
-	i.emit.NextRange(
-		tr)
-	return i.ack(NextRange)
-}
+func (i *iterator) NextRange(tr telem.TimeRange) bool { i.emit.NextRange(tr); return i.ack(NextRange) }
 
 func (i *iterator) SeekFirst() bool { i.emit.SeekFirst(); return i.ack(SeekFirst) }
 
 func (i *iterator) SeekLast() bool { i.emit.SeekLast(); return i.ack(SeekLast) }
 
-func (i *iterator) SeekLT(stamp telem.TimeStamp) bool {
-	i.emit.SeekLT(stamp)
-	return i.ack(SeekLT)
+func (i *iterator) SeekLT(stamp telem.TimeStamp) bool { i.emit.SeekLT(stamp); return i.ack(SeekLT) }
+
+func (i *iterator) SeekGE(stamp telem.TimeStamp) bool { i.emit.SeekGE(stamp); return i.ack(SeekGE) }
+
+func (i *iterator) Exhaust() bool { i.emit.Exhaust(); return i.ack(Exhaust) }
+
+func (i *iterator) Valid() bool {
+	i.emit.Valid()
+	return i.ack(Valid) && i.error() == nil
 }
 
-func (i *iterator) SeekGE(stamp telem.TimeStamp) bool {
-	i.emit.SeekGE(stamp)
-	return i.ack(SeekGE)
+func (i *iterator) error() error {
+	if i._error != nil {
+		return i._error
+	}
+	if i.wg.AnyExited() {
+		if err := i.wg.WaitOnAny(true); err != nil {
+			i._error = err
+		}
+	}
+	return nil
+}
+
+func (i *iterator) Error() error {
+	if i.error() != nil {
+		return i.error()
+	}
+	i.emit.Error()
+	ok, err := i.ackWithErr(Error)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("[iterator] - non positive ack")
+	}
+	return nil
+}
+
+func (i *iterator) ack(cmd Command) bool { ok, _ := i.ackWithErr(cmd); return ok }
+
+func (i *iterator) ackWithErr(cmd Command) (bool, error) {
+	return i.sync.sync(context.Background(), cmd)
 }
 
 func (i *iterator) Close() error {
@@ -201,40 +258,26 @@ func (i *iterator) Close() error {
 	i.emit.Close()
 
 	// Wait for all nodes to acknowledge a safe closure.
-	responses, closeOk := i.ackRes(Close)
-
-	// Wait for all nodes to finish transmitting their last value.
-	eofOk := i.ack(EOF)
+	closeOk := i.ack(Close)
 
 	// Shutdown iterator operations.
 	i.shutdown()
 
-	// Wait on all goroutines to complete.
+	// Wait on all goroutines to exit.
 	if err := i.wg.WaitOnAll(); err != nil && err != context.Canceled {
 		return err
 	}
 
-	// Check responses for errors.
-	for _, res := range responses {
-		if res.Error != nil {
-			return res.Error
-		}
-	}
-
 	// If we received a negative ack with no error response, it probably means
 	// we couldn't reach a node.
-	if !closeOk || !eofOk {
-		return errors.New(
-			"[segment.Iterator] - received a non-positive ack on close. node probably unreachable.",
-		)
+	if !closeOk {
+		return errors.New("[segment.Iterator] - negative ack on close. node probably unreachable")
 	}
 
 	close(i.Filter.Out.Inlet())
 
 	return nil
 }
-
-func (i *iterator) Exhaust() { i.emit.Exhaust() }
 
 func validateChannelKeys(ctx context.Context, svc *channel.Service, keys []channel.Key) error {
 	if len(keys) == 0 {

@@ -17,5 +17,5 @@ func newResponseFilter(rejects confluence.Inlet[Response]) *responseFilter {
 }
 
 func (rs *responseFilter) filter(ctx signal.Context, res Response) (bool, error) {
-	return res.Variant == ResponseVariantData, nil
+	return res.Variant == DataResponse, nil
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// emitter translates iterator commands into requests and writes them to a stream.
+// emitter translates iterator commands into req and writes them to a stream.
 type emitter struct {
 	confluence.UnarySource[Request]
 }
@@ -60,12 +60,15 @@ func (e *emitter) SeekGE(stamp telem.TimeStamp) {
 // Close emits a Close request to the stream.
 func (e *emitter) Close() { e.emit(Request{Command: Close}) }
 
-// Exhaust emits an Exhaust request to the stream.
+// Valid emits a Valid request to the stream.
+func (e *emitter) Valid() { e.emit(Request{Command: Valid}) }
+
 func (e *emitter) Exhaust() { e.emit(Request{Command: Exhaust}) }
 
-func (e *emitter) emit(req Request) {
-	e.Out.Inlet() <- req
-}
+// Error emits an Error request to the stream.
+func (e *emitter) Error() { e.emit(Request{Command: Error}) }
+
+func (e *emitter) emit(req Request) { e.Out.Inlet() <- req }
 
 func executeRequest(ctx context.Context, host node.ID, iter cesium.StreamIterator, req Request) Response {
 	switch req.Command {
@@ -97,14 +100,22 @@ func executeRequest(ctx context.Context, host node.ID, iter cesium.StreamIterato
 		return newAck(host, req.Command, iter.SeekLT(req.Stamp))
 	case SeekGE:
 		return newAck(host, req.Command, iter.SeekGE(req.Stamp))
-	case Exhaust:
-		iter.Exhaust(ctx)
-		return Response{}
+	case Valid:
+		return newAck(host, req.Command, iter.Valid())
+	case Error:
+		err := iter.Error()
+		ack := newAck(host, req.Command, err == nil)
+		ack.Error = err
+		return ack
 	case Close:
 		err := iter.Close()
 		ack := newAck(host, req.Command, err == nil)
 		ack.Error = err
 		return ack
+	case Exhaust:
+		for iter.First(); iter.Next(); iter.Valid() {
+		}
+		return newAck(host, req.Command, true)
 	default:
 		ack := newAck(host, req.Command, false)
 		ack.Error = errors.New("[segment.iterator] - unknown command")

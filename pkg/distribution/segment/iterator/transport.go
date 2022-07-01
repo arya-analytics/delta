@@ -23,10 +23,10 @@ const (
 	SeekLast
 	SeekLT
 	SeekGE
-	Exhaust
+	Valid
 	Error
 	Close
-	EOF
+	Exhaust
 )
 
 type Request struct {
@@ -40,8 +40,8 @@ type Request struct {
 type ResponseVariant uint8
 
 const (
-	ResponseVariantAck ResponseVariant = iota + 1
-	ResponseVariantData
+	AckResponse ResponseVariant = iota + 1
+	DataResponse
 )
 
 type Response struct {
@@ -54,7 +54,7 @@ type Response struct {
 }
 
 func newAck(host node.ID, cmd Command, ok bool) Response {
-	return Response{Variant: ResponseVariantAck, Ack: ok, Command: cmd, NodeID: host}
+	return Response{Variant: AckResponse, Ack: ok, Command: cmd, NodeID: host}
 }
 
 type (
