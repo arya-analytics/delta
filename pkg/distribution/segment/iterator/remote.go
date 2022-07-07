@@ -5,7 +5,7 @@ import (
 	"github.com/arya-analytics/delta/pkg/distribution/channel"
 	"github.com/arya-analytics/delta/pkg/distribution/node"
 	"github.com/arya-analytics/x/address"
-	"github.com/arya-analytics/x/confluence"
+	"github.com/arya-analytics/x/confluence/transfluence"
 	"github.com/arya-analytics/x/signal"
 	"github.com/arya-analytics/x/telem"
 )
@@ -16,9 +16,9 @@ func openRemoteIterators(
 	targets map[node.ID][]channel.Key,
 	rng telem.TimeRange,
 	resolver aspen.HostResolver,
-) (*confluence.MultiSender[Request], []*confluence.Receiver[Response], error) {
-	sender := &confluence.MultiSender[Request]{}
-	receivers := make([]*confluence.Receiver[Response], 0, len(targets))
+) (*transfluence.MultiSender[Request], []*transfluence.Receiver[Response], error) {
+	sender := &transfluence.MultiSender[Request]{}
+	receivers := make([]*transfluence.Receiver[Response], 0, len(targets))
 	for nodeID, keys := range targets {
 		targetAddr, err := resolver.Resolve(nodeID)
 		if err != nil {
@@ -29,7 +29,7 @@ func openRemoteIterators(
 			return sender, receivers, err
 		}
 		sender.Senders = append(sender.Senders, client)
-		receivers = append(receivers, &confluence.Receiver[Response]{Receiver: client})
+		receivers = append(receivers, &transfluence.Receiver[Response]{Receiver: client})
 	}
 	return sender, receivers, nil
 }
@@ -41,14 +41,14 @@ func openRemoteClient(
 	keys channel.Keys,
 	rng telem.TimeRange,
 ) (Client, error) {
-	stream, err := tran.Stream(ctx, target)
+	client, err := tran.Stream(ctx, target)
 	if err != nil {
 		return nil, err
 	}
 
 	// Send an open request to the transport. This will open a localIterator  on the
 	// target node.
-	return stream, stream.Send(Request{
+	return client, client.Send(Request{
 		Command: Open,
 		Keys:    keys,
 		Range:   rng,

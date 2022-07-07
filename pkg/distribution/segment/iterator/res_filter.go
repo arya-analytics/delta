@@ -12,7 +12,7 @@ type ackFilter struct {
 func newAckRouter(ackMessages confluence.Inlet[Response]) *ackFilter {
 	rs := &ackFilter{}
 	rs.Filter.Rejects = ackMessages
-	rs.Filter.Filter = rs.filter
+	rs.Filter.Apply = rs.filter
 	return rs
 }
 

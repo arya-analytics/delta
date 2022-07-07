@@ -11,7 +11,8 @@ import (
 
 // emitter translates iterator commands into req and writes them to a stream.
 type emitter struct {
-	confluence.UnarySource[Request]
+	confluence.AbstractUnarySource[Request]
+	confluence.EmptyFlow
 }
 
 // Next emits a Next request to the stream.
@@ -58,7 +59,9 @@ func (e *emitter) SeekGE(stamp telem.TimeStamp) {
 }
 
 // Close emits a Close request to the stream.
-func (e *emitter) Close() { e.emit(Request{Command: Close}) }
+func (e *emitter) Close() {
+	e.emit(Request{Command: Close})
+}
 
 // Valid emits a Valid request to the stream.
 func (e *emitter) Valid() { e.emit(Request{Command: Valid}) }

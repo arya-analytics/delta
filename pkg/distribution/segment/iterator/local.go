@@ -6,83 +6,76 @@ import (
 	"github.com/arya-analytics/delta/pkg/distribution/node"
 	"github.com/arya-analytics/delta/pkg/distribution/segment/core"
 	"github.com/arya-analytics/x/confluence"
+	"github.com/arya-analytics/x/confluence/plumber"
+	"github.com/arya-analytics/x/errutil"
 	"github.com/arya-analytics/x/signal"
 	"github.com/arya-analytics/x/telem"
 	"github.com/cockroachdb/errors"
 )
-
-type localIterator struct {
-	req       confluence.Sink[Request]
-	res       confluence.Source[Response]
-	cesiumRes confluence.Segment[cesium.RetrieveResponse]
-}
-
-func (s *localIterator) Flow(ctx signal.Context, opts ...confluence.FlowOption) {
-	s.req.Flow(ctx)
-	s.res.Flow(ctx)
-	s.cesiumRes.Flow(ctx)
-}
-
-func (s *localIterator) OutTo(inlets ...confluence.Inlet[Response]) { s.res.OutTo(inlets...) }
-
-func (s *localIterator) InFrom(outlets ...confluence.Outlet[Request]) { s.req.InFrom(outlets...) }
 
 func newLocalIterator(
 	db cesium.DB,
 	host node.ID,
 	rng telem.TimeRange,
 	keys channel.Keys,
-) (confluence.Translator[Request, Response], error) {
+) (confluence.Segment[Request, Response], error) {
 	iter := db.NewRetrieve().WhereTimeRange(rng).WhereChannels(keys.Cesium()...).Iterate()
 	if iter.Error() != nil {
 		return nil, errors.Wrap(iter.Error(), "[segment.iterator] - server failed to open cesium iterator")
 	}
 
-	// to a point where they can be translated into a transport Response.
-	cesiumRes := confluence.NewPipeline[cesium.RetrieveResponse]()
-	req := confluence.NewPipeline[Request]()
-	res := confluence.NewPipeline[Response]()
+	pipe := plumber.New()
 
 	// cesiumRes receives segments from the iterator.
-	cesiumRes.Source("iterator", iter)
+	plumber.SetSource[cesium.RetrieveResponse](pipe, "iterator", iter)
 
-	// executor executes req as method calls on the iterator. Pipes
+	// executor executes requests as method calls on the iterator. Pipes
 	// synchronous acknowledgements out to the response pipeline.
 	te := newRequestExecutor(host, iter)
-	req.Sink("executor", te)
-	res.Source("executor", te)
+	plumber.SetSegment[Request, Response](pipe, "executor", te)
 
 	// translator translates cesium res from the iterator source into
 	// res transportable over the network.
 	ts := newCesiumResponseTranslator(keys.CesiumMap())
-	cesiumRes.Sink("translator", ts)
-	res.Source("translator", ts)
+	plumber.SetSegment[cesium.RetrieveResponse, Response](pipe, "translator", ts)
 
-	reqBuilder := req.NewRouteBuilder()
-	resBuilder := res.NewRouteBuilder()
-	cesiumBuilder := cesiumRes.NewRouteBuilder()
+	c := errutil.NewCatchSimple()
 
-	cesiumBuilder.RouteUnary("iterator", "translator", 0)
-	reqBuilder.RouteInletTo("executor")
-	resBuilder.RouteOutletFrom("executor", "translator")
+	c.Exec(plumber.UnaryRouter[cesium.RetrieveResponse]{
+		SourceTarget: "iterator",
+		SinkTarget:   "translator",
+	}.PreRoute(pipe))
 
-	reqBuilder.PanicIfErr()
-	resBuilder.PanicIfErr()
-	cesiumBuilder.PanicIfErr()
+	if c.Error() != nil {
+		panic(c.Error())
+	}
 
-	return &localIterator{req: req, res: res, cesiumRes: cesiumRes}, nil
+	seg := &plumber.Segment[Request, Response]{Pipeline: pipe}
+
+	if err := seg.RouteInletTo("executor"); err != nil {
+		panic(err)
+	}
+
+	if err := seg.RouteOutletFrom("translator", "executor"); err != nil {
+		panic(err)
+	}
+
+	return seg, nil
 }
 
 type requestExecutor struct {
 	host node.ID
 	iter cesium.StreamIterator
-	confluence.CoreTranslator[Request, Response]
+	confluence.LinearTransform[Request, Response]
 }
 
-func newRequestExecutor(host node.ID, iter cesium.StreamIterator) confluence.Translator[Request, Response] {
+func newRequestExecutor(
+	host node.ID,
+	iter cesium.StreamIterator,
+) confluence.Segment[Request, Response] {
 	te := &requestExecutor{iter: iter, host: host}
-	te.CoreTranslator.Translate = te.execute
-	return confluence.GateTranslator[Request, Response](te)
+	te.LinearTransform.ApplyTransform = te.execute
+	return te
 }
 
 func (te *requestExecutor) execute(ctx signal.Context, req Request) (Response, bool, error) {
@@ -93,16 +86,24 @@ func (te *requestExecutor) execute(ctx signal.Context, req Request) (Response, b
 
 type cesiumResponseTranslator struct {
 	wrapper *core.CesiumWrapper
-	confluence.CoreTranslator[cesium.RetrieveResponse, Response]
+	confluence.LinearTransform[cesium.RetrieveResponse, Response]
 }
 
 func newCesiumResponseTranslator(
 	keyMap map[cesium.ChannelKey]channel.Key,
-) confluence.Translator[cesium.RetrieveResponse, Response] {
+) confluence.Segment[cesium.RetrieveResponse, Response] {
 	wrapper := &core.CesiumWrapper{KeyMap: keyMap}
 	ts := &cesiumResponseTranslator{wrapper: wrapper}
-	ts.CoreTranslator.Translate = ts.translate
-	return confluence.GateTranslator[cesium.RetrieveResponse, Response](ts)
+	ts.LinearTransform.ApplyTransform = ts.translate
+	return ts
+}
+
+func (te *cesiumResponseTranslator) Flow(ctx signal.Context,
+	opts ...confluence.Option) {
+	te.LinearTransform.Flow(ctx, append(opts, confluence.Defer(func() {
+		//log.Info("Translator exiting")
+	}))...)
+
 }
 
 func (te *cesiumResponseTranslator) translate(

@@ -6,6 +6,7 @@ import (
 	"github.com/arya-analytics/x/confluence"
 	"github.com/arya-analytics/x/filter"
 	"github.com/arya-analytics/x/signal"
+	"github.com/cockroachdb/errors"
 	"time"
 )
 
@@ -23,7 +24,7 @@ func (a *synchronizer) sync(ctx context.Context, command Command) (bool, error) 
 	for {
 		select {
 		case <-ctx.Done():
-			return false, ctx.Err()
+			return false, errors.Wrap(ctx.Err(), "[synchronizer] - timed out")
 		case r, ok := <-a.In.Outlet():
 			if r.Command != command {
 				continue

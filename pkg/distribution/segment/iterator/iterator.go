@@ -2,14 +2,15 @@ package iterator
 
 import (
 	"context"
-	"fmt"
 	"github.com/arya-analytics/aspen"
 	"github.com/arya-analytics/cesium"
 	"github.com/arya-analytics/delta/pkg/distribution/channel"
+	"github.com/arya-analytics/delta/pkg/distribution/segment/core"
 	"github.com/arya-analytics/delta/pkg/proxy"
 	"github.com/arya-analytics/x/address"
 	"github.com/arya-analytics/x/confluence"
-	"github.com/arya-analytics/x/query"
+	"github.com/arya-analytics/x/confluence/plumber"
+	"github.com/arya-analytics/x/errutil"
 	"github.com/arya-analytics/x/signal"
 	"github.com/arya-analytics/x/telem"
 	"github.com/cockroachdb/errors"
@@ -17,11 +18,6 @@ import (
 )
 
 type Iterator interface {
-	// Source emits values from the iterator to a channel (confluence.Stream).
-	// To bind a stream, call Iterator.OutTo(stream). The iterator will then send
-	// all values to it. Iterator.OutTo must be called before any iteration methods,
-	// or else values will be sent to a nil stream.
-	confluence.Source[Response]
 	// Next retrieves the next segment of each channel's data.
 	// Returns true if the current Iterator.View is pointing to any valid segments.
 	// It's important to note that if channel data is non-contiguous, calls to Next
@@ -75,19 +71,20 @@ type Iterator interface {
 }
 
 func New(
+	ctx context.Context,
 	db cesium.DB,
 	svc *channel.Service,
 	resolver aspen.HostResolver,
 	tran Transport,
 	rng telem.TimeRange,
 	keys channel.Keys,
+	output chan<- Response,
 ) (Iterator, error) {
-	ctx, cancel := signal.Background()
+	sCtx, cancel := signal.WithCancel(ctx)
 
-	// First we need to check if all the channels exists and are retrievable in the
+	// First we need to check if all the channels exist and are retrievable in the
 	// database.
-	if err := validateChannelKeys(ctx, svc, keys); err != nil {
-		cancel()
+	if err := core.ValidateChannelKeys(ctx, svc, keys); err != nil {
 		return nil, err
 	}
 
@@ -95,58 +92,51 @@ func New(
 	batch := proxy.NewBatchFactory[channel.Key](resolver.HostID()).Batch(keys)
 
 	var (
+		pipe              = plumber.New()
 		needRemote        = len(batch.Remote) > 0
 		needLocal         = len(batch.Local) > 0
-		requests          = confluence.NewPipeline[Request]()
-		responses         = confluence.NewPipeline[Response]()
-		numSenders        = len(keys.Nodes())
+		numSenders        = 0
 		numReceivers      = 0
 		receiverAddresses []address.Address
 	)
 
 	if needRemote {
 		numSenders += 1
+		numReceivers += len(batch.Remote)
 
-		sender, receivers, err := openRemoteIterators(ctx, tran, batch.Remote, rng, resolver)
+		sender, receivers, err := openRemoteIterators(sCtx, tran, batch.Remote, rng, resolver)
 		if err != nil {
 			cancel()
 			return nil, err
 		}
 
 		// Set up our sender as a sink for the request pipeline.
-		requests.Sink("sender", sender)
+		plumber.SetSink[Request](pipe, "sender", sender)
 
 		// Set up our remote receivers as sources for the response pipeline.
 		receiverAddresses = make([]address.Address, len(receivers))
 		for i, c := range receivers {
-			addr := address.Address(fmt.Sprintf("client-%v", i+1))
+			addr := address.Newf("client-%v", i+1)
 			receiverAddresses[i] = addr
-			responses.Source(addr, c)
+			plumber.SetSource[Response](pipe, addr, c)
 		}
 	}
 
 	if needLocal {
 		numSenders += 1
-
 		localIter, err := newLocalIterator(db, resolver.HostID(), rng, batch.Local)
 		if err != nil {
 			cancel()
 			return nil, err
 		}
-
 		addr := address.Address("local")
-
-		// Set up our local iterator as a sink for the request pipeline.
-		requests.Sink(addr, localIter)
-		// And as a source for the response pipeline.
-		responses.Source(addr, localIter)
-
+		plumber.SetSegment[Request, Response](pipe, addr, localIter)
 		receiverAddresses = append(receiverAddresses, addr)
 	}
 
 	// The synchronizer checks that all nodes have acknowledged an iteration
 	// request. This is used to return ok = true from the iterator methods.
-	sync := &synchronizer{nodeIDs: keys.Nodes(), timeout: 1 * time.Second}
+	sync := &synchronizer{nodeIDs: keys.Nodes(), timeout: 2 * time.Second}
 
 	// Open a ackFilter that will route acknowledgement responses to the iterator
 	// synchronizer. We expect an ack from each remote iterator as well as the
@@ -156,32 +146,36 @@ func New(
 
 	// Send rejects from the ackFilter to the synchronizer.
 	filter := newAckRouter(syncMessages)
-	responses.Sink("filter", filter)
+	plumber.SetSegment[Response, Response](pipe, "filter", filter)
 
 	// emitter emits method calls as requests to stream.
 	emit := &emitter{}
-	requests.Source("emitter", emit)
+	plumber.SetSource[Request](pipe, "emitter", emit)
 
-	requestBuilder := requests.NewRouteBuilder()
-	responseBuilder := responses.NewRouteBuilder()
-
-	var routeEmitterTo address.Address
+	var (
+		routeEmitterTo address.Address
+		c              = errutil.NewCatchSimple()
+	)
 
 	// We need to configure different pipelines to optimize for particular cases.
 	if needRemote && needLocal {
 		// Open a broadcaster that will multiply requests to both the local and remote
 		// iterators.
-		requests.Sink("broadcaster", &confluence.Confluence[Request]{})
+		plumber.SetSegment[Request, Request](
+			pipe,
+			"broadcaster",
+			&confluence.DeltaMultiplier[Request]{},
+		)
 		routeEmitterTo = "broadcaster"
 
 		// We use confluence.StitchWeave here to dedicate a channel to both the
 		// sender and local, so that they both receive a copy of the emitted request.
-		requestBuilder.Route(confluence.MultiRouter[Request]{
+		c.Exec(plumber.MultiRouter[Request]{
 			SourceTargets: []address.Address{"broadcaster"},
 			SinkTargets:   []address.Address{"sender", "local"},
 			Capacity:      1,
-			Stitch:        confluence.StitchWeave,
-		})
+			Stitch:        plumber.StitchWeave,
+		}.PreRoute(pipe))
 	} else if needRemote {
 		// If we only have remote iterators, we can skip the broadcasting step
 		// and forward requests from the emitter directly to the sender.
@@ -192,40 +186,44 @@ func New(
 		routeEmitterTo = "local"
 	}
 
-	requestBuilder.RouteUnary("emitter", routeEmitterTo, 0)
+	c.Exec(plumber.UnaryRouter[Request]{
+		SourceTarget: "emitter",
+		SinkTarget:   routeEmitterTo,
+	}.PreRoute(pipe))
 
-	// Route all responses from our receivers to the ackFilter. Using a single channel
-	// to link all the receivers to the ackFilter with a buffer capacity allowing
-	// for 1 response per receiver at a time.
-	responseBuilder.Route(confluence.MultiRouter[Response]{
+	c.Exec(plumber.MultiRouter[Response]{
 		SourceTargets: receiverAddresses,
 		SinkTargets:   []address.Address{"filter"},
-		Stitch:        confluence.StitchUnary,
-		Capacity:      numReceivers,
-	})
+		Stitch:        plumber.StitchUnary,
+		Capacity:      1,
+	}.PreRoute(pipe))
 
-	responseBuilder.PanicIfErr()
-	requestBuilder.PanicIfErr()
+	if c.Error() != nil {
+		panic(c.Error())
+	}
 
-	responses.Flow(ctx)
-	requests.Flow(ctx)
+	seg := &plumber.Segment[Request, Response]{Pipeline: pipe}
+	if err := seg.RouteOutletFrom("filter"); err != nil {
+		panic(err)
+	}
+
+	seg.OutTo(confluence.NewInlet[Response](output))
+	seg.Flow(sCtx, confluence.CloseInletsOnExit())
 
 	return &iterator{
-		emitter:   emit,
-		sync:      sync,
-		wg:        ctx,
-		shutdown:  cancel,
-		ackFilter: filter,
+		emitter: emit,
+		sync:    sync,
+		wg:      sCtx,
+		cancel:  cancel,
 	}, nil
 }
 
 type iterator struct {
-	emitter  *emitter
-	sync     *synchronizer
-	shutdown context.CancelFunc
-	wg       signal.WaitGroup
-	_error   error
-	*ackFilter
+	emitter *emitter
+	sync    *synchronizer
+	cancel  context.CancelFunc
+	wg      signal.WaitGroup
+	_error  error
 }
 
 func (i *iterator) Next() bool {
@@ -298,7 +296,8 @@ func (i *iterator) error() error {
 		return i._error
 	}
 	if i.wg.AnyExited() {
-		if err := i.wg.WaitOnAny(true); err != nil {
+		i.cancel()
+		if err := i.wg.Wait(); err != nil {
 			i._error = err
 		}
 	}
@@ -330,40 +329,18 @@ func (i *iterator) ackWithErr(cmd Command) (bool, error) {
 }
 
 func (i *iterator) Close() error {
+	defer i.cancel()
 
 	// Wait for all iterator internal operations to complete.
 	i.emitter.Close()
 
 	// Wait for all nodes to acknowledge a safe closure.
-	closeOk := i.ack(Close)
+	if ok := i.ack(Close); !ok {
+		return errors.New("[segment.iterator] - negative ack on close. node probably unreachable")
+	}
 
-	// Shutdown iterator operations.
-	i.shutdown()
+	i.emitter.Out.Close()
 
 	// Wait on all goroutines to exit.
-	if err := i.wg.WaitOnAll(); err != nil && err != context.Canceled {
-		return err
-	}
-
-	// If we received a negative ack with no error response, it probably means
-	// we couldn't reach a node.
-	if !closeOk {
-		return errors.New("[segment.Iterator] - negative ack on close. node probably unreachable")
-	}
-	close(i.Filter.Out.Inlet())
-	return nil
-}
-
-func validateChannelKeys(ctx context.Context, svc *channel.Service, keys []channel.Key) error {
-	if len(keys) == 0 {
-		return errors.New("[segment.iterator] - no channels provided to iterator")
-	}
-	exists, err := svc.NewRetrieve().WhereKeys(keys...).Exists(ctx)
-	if !exists {
-		return errors.Wrap(query.NotFound, "[segment.iterator] - channel keys not found")
-	}
-	if err != nil {
-		return errors.Wrap(err, "[segment.iterator] - failed to validate channel keys")
-	}
-	return nil
+	return i.wg.Wait()
 }

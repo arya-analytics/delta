@@ -1,23 +1,50 @@
 package iterator_test
 
 import (
+	"context"
 	"github.com/arya-analytics/cesium"
 	"github.com/arya-analytics/cesium/testutil/seg"
 	"github.com/arya-analytics/delta/pkg/distribution/channel"
 	"github.com/arya-analytics/delta/pkg/distribution/mock"
-	"github.com/arya-analytics/delta/pkg/distribution/node"
 	"github.com/arya-analytics/delta/pkg/distribution/segment/iterator"
 	"github.com/arya-analytics/x/address"
 	"github.com/arya-analytics/x/gorp"
 	"github.com/arya-analytics/x/telem"
 	tmock "github.com/arya-analytics/x/transport/mock"
+	"github.com/cockroachdb/errors"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 	"time"
 )
 
-var _ = Describe("Remote", Ordered, func() {
+func assertResponse(
+	c,
+	n int,
+	values <-chan iterator.Response,
+	timeout time.Duration,
+) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	for i := 0; i < c; i++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case v := <-values:
+			if len(v.Segments) != n {
+				return errors.Newf("expected %v segments, received %v", n, len(v.Segments))
+			}
+		}
+	}
+	select {
+	case <-values:
+		return errors.Newf("expected no more values, received extra response")
+	case <-ctx.Done():
+		return nil
+	}
+}
+
+var _ = Describe("Compound", Ordered, func() {
 	var (
 		log       *zap.Logger
 		net       *tmock.Network[iterator.Request, iterator.Response]
@@ -35,7 +62,6 @@ var _ = Describe("Remote", Ordered, func() {
 
 		node1Addr := address.Address("localhost:0")
 		node2Addr := address.Address("localhost:1")
-		node3Addr := address.Address("localhost:2")
 
 		store1, err := builder.New(log)
 		Expect(err).ToNot(HaveOccurred())
@@ -47,17 +73,22 @@ var _ = Describe("Remote", Ordered, func() {
 		node2Transport := net.RouteStream(node2Addr, 0)
 		iterator.NewServer(store2.Cesium, store2.Aspen.HostID(), node2Transport)
 
-		store3, err := builder.New(log)
-		Expect(err).ToNot(HaveOccurred())
-		node3Transport := net.RouteStream(node3Addr, 0)
-		iterator.NewServer(store3.Cesium, store3.Aspen.HostID(), node3Transport)
-
-		store1ChannelSvc := channel.New(
+		channelSvc := channel.New(
 			store1.Aspen,
 			gorp.Wrap(store1.Aspen),
 			store1.Cesium,
 			channelNet.RouteUnary(node1Addr),
 		)
+		dr := 25 * telem.Hz
+		var channels []channel.Channel
+		node1Channels, err := channelSvc.NewCreate().
+			WithName("SG02").
+			WithDataRate(dr).
+			WithDataType(telem.Float64).
+			WithNodeID(1).
+			ExecN(ctx, 1)
+		Expect(err).ToNot(HaveOccurred())
+		channels = append(channels, node1Channels...)
 
 		store2ChannelSvc := channel.New(
 			store2.Aspen,
@@ -66,41 +97,24 @@ var _ = Describe("Remote", Ordered, func() {
 			channelNet.RouteUnary(node2Addr),
 		)
 
-		store3ChannelSvc := channel.New(
-			store3.Aspen,
-			gorp.Wrap(store3.Aspen),
-			store3.Cesium,
-			channelNet.RouteUnary(node3Addr),
-		)
-
-		dr := 1 * telem.Hz
-		var channels []channel.Channel
-		store1Channels, err := store1ChannelSvc.NewCreate().
-			WithName("SG02").
-			WithDataRate(dr).
-			WithDataType(telem.Float64).
-			WithNodeID(1).
-			ExecN(ctx, 1)
-		Expect(err).ToNot(HaveOccurred())
-		channels = append(channels, store1Channels...)
-
-		store2Channels, err := store2ChannelSvc.NewCreate().
+		node2Channels, err := channelSvc.NewCreate().
 			WithName("SG02").
 			WithDataRate(dr).
 			WithDataType(telem.Float64).
 			WithNodeID(2).
 			ExecN(ctx, 1)
 		Expect(err).ToNot(HaveOccurred())
-		channels = append(channels, store2Channels...)
+		channels = append(channels, node2Channels...)
 		nChannels = len(channels)
 
 		var keys channel.Keys
 		dur := 10 * telem.Second
 		nReq := 10
 		nSeg := 10
+		//nRes = nReq * nSeg * len(channels)
 		for _, ch := range channels {
 			var db cesium.DB
-			if ch.NodeID == node.ID(1) {
+			if ch.NodeID == 1 {
 				db = store1.Cesium
 			} else {
 				db = store2.Cesium
@@ -113,9 +127,10 @@ var _ = Describe("Remote", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred())
 			}()
 			stc := &seg.StreamCreate{
-				Req:               req,
-				Res:               res,
-				SequentialFactory: seg.NewSequentialFactory(dataFactory, dur, ch.Cesium),
+				Req: req,
+				Res: res,
+				SequentialFactory: seg.NewSequentialFactory(dataFactory, dur,
+					ch.Cesium),
 			}
 			stc.CreateCRequestsOfN(nReq, nSeg)
 			Expect(stc.CloseAndWait()).ToNot(HaveOccurred())
@@ -124,13 +139,12 @@ var _ = Describe("Remote", Ordered, func() {
 		time.Sleep(100 * time.Millisecond)
 
 		values = make(chan iterator.Response)
-
 		iter, err = iterator.New(
 			ctx,
-			store3.Cesium,
-			store3ChannelSvc,
-			store3.Aspen,
-			node3Transport,
+			store2.Cesium,
+			store2ChannelSvc,
+			store2.Aspen,
+			node2Transport,
 			telem.TimeRangeMax,
 			keys,
 			values,
@@ -188,15 +202,15 @@ var _ = Describe("Remote", Ordered, func() {
 					1,
 					values,
 					20*time.Millisecond,
-				))
+				)).To(Succeed())
 			})
 		})
 		Describe("PrevSpan", func() {
 			It("Should return the previous span in the iterator", func() {
 				Expect(iter.SeekLast()).To(BeTrue())
-				Expect(iter.PrevSpan(30 * telem.Second)).To(BeTrue())
+				Expect(iter.PrevSpan(20 * telem.Second)).To(BeTrue())
 				Expect(assertResponse(
-					nChannels*3,
+					nChannels*2,
 					1,
 					values,
 					20*time.Millisecond,
@@ -207,14 +221,14 @@ var _ = Describe("Remote", Ordered, func() {
 			It("Should return the next range of data in the iterator", func() {
 				Expect(iter.NextRange(telem.TimeRange{
 					Start: 0,
-					End:   telem.TimeStamp(25 * telem.Second),
+					End:   telem.TimeStamp(30 * telem.Second),
 				})).To(BeTrue())
 				Expect(assertResponse(
 					nChannels*3,
 					1,
 					values,
-					20*time.Millisecond,
-				)).To(Succeed())
+					30*time.Millisecond,
+				))
 			})
 		})
 	})

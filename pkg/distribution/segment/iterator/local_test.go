@@ -1,11 +1,11 @@
 package iterator_test
 
 import (
+	"github.com/arya-analytics/cesium"
 	"github.com/arya-analytics/cesium/testutil/seg"
 	"github.com/arya-analytics/delta/pkg/distribution/channel"
 	"github.com/arya-analytics/delta/pkg/distribution/mock"
 	"github.com/arya-analytics/delta/pkg/distribution/segment/iterator"
-	"github.com/arya-analytics/x/confluence"
 	"github.com/arya-analytics/x/gorp"
 	"github.com/arya-analytics/x/telem"
 	tmock "github.com/arya-analytics/x/transport/mock"
@@ -20,7 +20,7 @@ var _ = Describe("Local", Ordered, func() {
 		net     *tmock.Network[iterator.Request, iterator.Response]
 		iter    iterator.Iterator
 		builder *mock.StorageBuilder
-		values  confluence.Outlet[iterator.Response]
+		values  chan iterator.Response
 	)
 	BeforeAll(func() {
 		log = zap.NewNop()
@@ -52,8 +52,12 @@ var _ = Describe("Local", Ordered, func() {
 		var keys channel.Keys
 		for _, ch := range channels {
 			keys = append(keys, ch.Key())
-			req, res, err := store1.Cesium.NewCreate().WhereChannels(ch.Key().Cesium()).Stream(ctx)
-			Expect(err).ToNot(HaveOccurred())
+			req, res := make(chan cesium.CreateRequest), make(chan cesium.CreateResponse)
+			go func() {
+				err := store1.Cesium.NewCreate().WhereChannels(ch.Key().Cesium()).
+					Stream(ctx, req, res)
+				Expect(err).ToNot(HaveOccurred())
+			}()
 			stc := &seg.StreamCreate{
 				Req:               req,
 				Res:               res,
@@ -63,22 +67,22 @@ var _ = Describe("Local", Ordered, func() {
 			Expect(stc.CloseAndWait()).To(Succeed())
 		}
 
+		values = make(chan iterator.Response)
 		iter, err = iterator.New(
+			ctx,
 			store1.Cesium,
 			channelSvc,
 			store1.Aspen,
 			net.RouteStream("", 0),
 			telem.TimeRangeMax,
 			keys,
+			values,
 		)
 		Expect(err).ToNot(HaveOccurred())
-		v := confluence.NewStream[iterator.Response](10)
-		iter.OutTo(v)
-		values = v
 	})
 	AfterAll(func() {
 		Expect(iter.Close()).To(Succeed())
-		_, ok := <-values.Outlet()
+		_, ok := <-values
 		Expect(ok).To(BeFalse())
 		Expect(builder.Close()).To(Succeed())
 	})
@@ -89,7 +93,7 @@ var _ = Describe("Local", Ordered, func() {
 		Describe("First", func() {
 			It("Should return the first segment in the iterator", func() {
 				Expect(iter.First()).To(BeTrue())
-				res := <-values.Outlet()
+				res := <-values
 				Expect(res.Error).To(BeNil())
 				Expect(res.Segments).To(HaveLen(1))
 			})
@@ -98,7 +102,7 @@ var _ = Describe("Local", Ordered, func() {
 			It("Should return the next segment in the iterator", func() {
 				Expect(iter.SeekFirst()).To(BeTrue())
 				Expect(iter.Next()).To(BeTrue())
-				res := <-values.Outlet()
+				res := <-values
 				Expect(res.Error).To(BeNil())
 				Expect(res.Segments).To(HaveLen(1))
 			})
@@ -107,7 +111,7 @@ var _ = Describe("Local", Ordered, func() {
 			It("Should return the previous segment in the iterator", func() {
 				Expect(iter.SeekLast()).To(BeTrue())
 				Expect(iter.Prev()).To(BeTrue())
-				res := <-values.Outlet()
+				res := <-values
 				Expect(res.Error).To(BeNil())
 				Expect(res.Segments).To(HaveLen(1))
 			})
@@ -116,10 +120,10 @@ var _ = Describe("Local", Ordered, func() {
 			It("Should return the next span in the iterator", func() {
 				Expect(iter.SeekFirst()).To(BeTrue())
 				Expect(iter.NextSpan(20 * telem.Second)).To(BeTrue())
-				res := <-values.Outlet()
+				res := <-values
 				Expect(res.Error).To(BeNil())
 				Expect(res.Segments).To(HaveLen(1))
-				res2 := <-values.Outlet()
+				res2 := <-values
 				Expect(res2.Error).To(BeNil())
 				Expect(res2.Segments).To(HaveLen(1))
 			})
@@ -128,10 +132,10 @@ var _ = Describe("Local", Ordered, func() {
 			It("Should return the previous span in the iterator", func() {
 				Expect(iter.SeekLast()).To(BeTrue())
 				Expect(iter.PrevSpan(20 * telem.Second)).To(BeTrue())
-				res := <-values.Outlet()
+				res := <-values
 				Expect(res.Error).To(BeNil())
 				Expect(res.Segments).To(HaveLen(1))
-				res2 := <-values.Outlet()
+				res2 := <-values
 				Expect(res2.Error).To(BeNil())
 				Expect(res2.Segments).To(HaveLen(1))
 			})
