@@ -34,6 +34,11 @@ func (c Key) Cesium() cesium.ChannelKey {
 // Lease implements the proxy.RouteUnary interface.
 func (c Key) Lease() aspen.NodeID { return c.NodeID() }
 
+//// String implements the fmt.Stringer interface.
+//func (c Key) String() string {
+//	//return fmt.Sprintf("NodeID:%s - CesiumKey %s", c.NodeID(), c.Cesium())
+//}
+
 type Keys []Key
 
 func (k Keys) Cesium() []cesium.ChannelKey {

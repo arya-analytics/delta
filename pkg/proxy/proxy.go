@@ -3,6 +3,7 @@ package proxy
 import (
 	"github.com/arya-analytics/aspen"
 	"github.com/arya-analytics/delta/pkg/distribution/node"
+	"github.com/arya-analytics/x/address"
 )
 
 type Entry interface {
@@ -35,4 +36,18 @@ func (p batchFactory[E]) Batch(entries []E) Batch[E] {
 		}
 	}
 	return b
+}
+
+type AddressMap map[node.ID]address.Address
+
+func ResolveAddressMap(resolver aspen.Resolver, nodes ...node.ID) (AddressMap, error) {
+	addrMap := make(AddressMap, len(nodes))
+	for _, id := range nodes {
+		addr, err := resolver.Resolve(id)
+		if err != nil {
+			return addrMap, err
+		}
+		addrMap[id] = addr
+	}
+	return addrMap, nil
 }

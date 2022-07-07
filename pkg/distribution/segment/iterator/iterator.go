@@ -210,12 +210,7 @@ func New(
 	seg.OutTo(confluence.NewInlet[Response](output))
 	seg.Flow(sCtx, confluence.CloseInletsOnExit())
 
-	return &iterator{
-		emitter: emit,
-		sync:    sync,
-		wg:      sCtx,
-		cancel:  cancel,
-	}, nil
+	return &iterator{emitter: emit, sync: sync, wg: sCtx, cancel: cancel}, nil
 }
 
 type iterator struct {
