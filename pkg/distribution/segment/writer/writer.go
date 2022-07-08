@@ -14,18 +14,22 @@ import (
 )
 
 type Writer interface {
+	Requests() chan<- Request
+	Responses() <-chan Response
 	Close() error
 }
 
 type writer struct {
-	plumber.Segment[Request, Response]
-	wg signal.WaitGroup
+	requests  chan<- Request
+	responses <-chan Response
+	wg        signal.WaitGroup
 }
 
-func (w *writer) Close() error {
-	w.AbstractUnarySource.CloseInlets()
-	return w.wg.Wait()
-}
+func (w *writer) Requests() chan<- Request { return w.requests }
+
+func (w *writer) Responses() <-chan Response { return w.responses }
+
+func (w *writer) Close() error { return w.wg.Wait() }
 
 func New(
 	ctx context.Context,
@@ -34,8 +38,6 @@ func New(
 	resolver aspen.HostResolver,
 	tran Transport,
 	keys channel.Keys,
-	input <-chan Request,
-	output chan<- Response,
 ) (Writer, error) {
 	sCtx, cancel := signal.WithCancel(ctx)
 
@@ -76,7 +78,11 @@ func New(
 	}
 
 	if needLocal {
-		w := newLocalWriter(db, keys)
+		w, err := newLocalWriter(sCtx, db, keys)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
 		addr := address.Address("local")
 		plumber.SetSegment[Request, Response](pipe, addr, w)
 		receiverAddresses = append(receiverAddresses, addr)
@@ -109,8 +115,13 @@ func New(
 	if err := seg.RouteOutletFrom(receiverAddresses...); err != nil {
 		panic(err)
 	}
-	seg.InFrom(confluence.NewOutlet(input))
-	seg.OutTo(confluence.NewInlet(output))
-	seg.Flow(sCtx)
-	return &writer{Segment: *seg, wg: sCtx}, nil
+
+	input := confluence.NewStream[Request](0)
+	output := confluence.NewStream[Response](0)
+	seg.InFrom(input)
+	seg.OutTo(output)
+
+	seg.Flow(sCtx, confluence.CloseInletsOnExit())
+
+	return &writer{responses: output.Outlet(), requests: input.Inlet(), wg: sCtx}, nil
 }

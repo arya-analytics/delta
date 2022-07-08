@@ -7,6 +7,7 @@ import (
 	"github.com/arya-analytics/x/confluence"
 	"github.com/arya-analytics/x/confluence/transfluence"
 	"github.com/arya-analytics/x/signal"
+	"github.com/arya-analytics/x/transport"
 )
 
 type requestSwitchSender struct {
@@ -18,6 +19,7 @@ func newRequestSwitchSender(
 	addresses proxy.AddressMap,
 ) *requestSwitchSender {
 	rs := &requestSwitchSender{addresses: addresses}
+	rs.Senders = make(map[address.Address]transport.StreamSenderCloser[Request])
 	rs.BatchSwitchSender.ApplySwitch = rs._switch
 	return rs
 }
