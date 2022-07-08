@@ -9,6 +9,5 @@ import (
 type (
 	Segment  = core.Segment
 	Iterator = iterator.Iterator
-	Response = iterator.Response
-	Request  = writer.Request
+	Writer   = writer.Writer
 )
