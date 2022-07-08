@@ -24,7 +24,6 @@ var _ = Describe("Remote", Ordered, func() {
 		iter      iterator.Iterator
 		builder   *mock.StorageBuilder
 		nChannels int
-		values    chan iterator.Response
 	)
 	BeforeAll(func() {
 		log = zap.NewNop()
@@ -123,8 +122,6 @@ var _ = Describe("Remote", Ordered, func() {
 
 		time.Sleep(100 * time.Millisecond)
 
-		values = make(chan iterator.Response)
-
 		iter, err = iterator.New(
 			ctx,
 			store3.Cesium,
@@ -133,13 +130,12 @@ var _ = Describe("Remote", Ordered, func() {
 			node3Transport,
 			telem.TimeRangeMax,
 			keys,
-			values,
 		)
 		Expect(err).ToNot(HaveOccurred())
 	})
 	AfterAll(func() {
 		Expect(iter.Close()).To(Succeed())
-		_, ok := <-values
+		_, ok := <-iter.Responses()
 		Expect(ok).To(BeFalse())
 		Expect(builder.Close()).To(Succeed())
 	})
@@ -150,7 +146,7 @@ var _ = Describe("Remote", Ordered, func() {
 				Expect(assertResponse(
 					nChannels,
 					1,
-					values,
+					iter,
 					20*time.Millisecond,
 				)).To(Succeed())
 			})
@@ -162,7 +158,7 @@ var _ = Describe("Remote", Ordered, func() {
 				Expect(assertResponse(
 					nChannels,
 					1,
-					values,
+					iter,
 					20*time.Millisecond,
 				)).To(Succeed())
 			})
@@ -174,7 +170,7 @@ var _ = Describe("Remote", Ordered, func() {
 				Expect(assertResponse(
 					nChannels,
 					1,
-					values,
+					iter,
 					20*time.Millisecond,
 				)).To(Succeed())
 			})
@@ -186,7 +182,7 @@ var _ = Describe("Remote", Ordered, func() {
 				Expect(assertResponse(
 					nChannels*2,
 					1,
-					values,
+					iter,
 					20*time.Millisecond,
 				))
 			})
@@ -198,7 +194,7 @@ var _ = Describe("Remote", Ordered, func() {
 				Expect(assertResponse(
 					nChannels*3,
 					1,
-					values,
+					iter,
 					20*time.Millisecond,
 				)).To(Succeed())
 			})
@@ -212,7 +208,7 @@ var _ = Describe("Remote", Ordered, func() {
 				Expect(assertResponse(
 					nChannels*3,
 					1,
-					values,
+					iter,
 					20*time.Millisecond,
 				)).To(Succeed())
 			})

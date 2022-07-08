@@ -20,7 +20,6 @@ var _ = Describe("Local", Ordered, func() {
 		net     *tmock.Network[iterator.Request, iterator.Response]
 		iter    iterator.Iterator
 		builder *mock.StorageBuilder
-		values  chan iterator.Response
 	)
 	BeforeAll(func() {
 		log = zap.NewNop()
@@ -67,7 +66,6 @@ var _ = Describe("Local", Ordered, func() {
 			Expect(stc.CloseAndWait()).To(Succeed())
 		}
 
-		values = make(chan iterator.Response)
 		iter, err = iterator.New(
 			ctx,
 			store1.Cesium,
@@ -76,15 +74,15 @@ var _ = Describe("Local", Ordered, func() {
 			net.RouteStream("", 0),
 			telem.TimeRangeMax,
 			keys,
-			values,
 		)
 		Expect(err).ToNot(HaveOccurred())
 	})
 	AfterAll(func() {
 		Expect(iter.Close()).To(Succeed())
-		_, ok := <-values
+		_, ok := <-iter.Responses()
 		Expect(ok).To(BeFalse())
 		Expect(builder.Close()).To(Succeed())
+
 	})
 	// Behavioral accuracy tests check whether the iterator returns the correct
 	// boolean acknowledgements and segment counts. These tests DO NOT check
@@ -93,7 +91,7 @@ var _ = Describe("Local", Ordered, func() {
 		Describe("First", func() {
 			It("Should return the first segment in the iterator", func() {
 				Expect(iter.First()).To(BeTrue())
-				res := <-values
+				res := <-iter.Responses()
 				Expect(res.Error).To(BeNil())
 				Expect(res.Segments).To(HaveLen(1))
 			})
@@ -102,7 +100,7 @@ var _ = Describe("Local", Ordered, func() {
 			It("Should return the next segment in the iterator", func() {
 				Expect(iter.SeekFirst()).To(BeTrue())
 				Expect(iter.Next()).To(BeTrue())
-				res := <-values
+				res := <-iter.Responses()
 				Expect(res.Error).To(BeNil())
 				Expect(res.Segments).To(HaveLen(1))
 			})
@@ -111,7 +109,7 @@ var _ = Describe("Local", Ordered, func() {
 			It("Should return the previous segment in the iterator", func() {
 				Expect(iter.SeekLast()).To(BeTrue())
 				Expect(iter.Prev()).To(BeTrue())
-				res := <-values
+				res := <-iter.Responses()
 				Expect(res.Error).To(BeNil())
 				Expect(res.Segments).To(HaveLen(1))
 			})
@@ -120,10 +118,10 @@ var _ = Describe("Local", Ordered, func() {
 			It("Should return the next span in the iterator", func() {
 				Expect(iter.SeekFirst()).To(BeTrue())
 				Expect(iter.NextSpan(20 * telem.Second)).To(BeTrue())
-				res := <-values
+				res := <-iter.Responses()
 				Expect(res.Error).To(BeNil())
 				Expect(res.Segments).To(HaveLen(1))
-				res2 := <-values
+				res2 := <-iter.Responses()
 				Expect(res2.Error).To(BeNil())
 				Expect(res2.Segments).To(HaveLen(1))
 			})
@@ -132,10 +130,10 @@ var _ = Describe("Local", Ordered, func() {
 			It("Should return the previous span in the iterator", func() {
 				Expect(iter.SeekLast()).To(BeTrue())
 				Expect(iter.PrevSpan(20 * telem.Second)).To(BeTrue())
-				res := <-values
+				res := <-iter.Responses()
 				Expect(res.Error).To(BeNil())
 				Expect(res.Segments).To(HaveLen(1))
-				res2 := <-values
+				res2 := <-iter.Responses()
 				Expect(res2.Error).To(BeNil())
 				Expect(res2.Segments).To(HaveLen(1))
 			})

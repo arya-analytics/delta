@@ -18,6 +18,9 @@ import (
 )
 
 type Iterator interface {
+	// Responses emits segment data retrieved by method calls from the Iterator.
+	// The channel is closed when iterator.Close is called.
+	Responses() <-chan Response
 	// Next retrieves the next segment of each channel's data.
 	// Returns true if the current Iterator.View is pointing to any valid segments.
 	// It's important to note that if channel data is non-contiguous, calls to Next
@@ -65,8 +68,12 @@ type Iterator interface {
 	// before closing the Source outlet. All iterators must be Closed, or the
 	// distribution layer will panic.
 	Close() error
+	// Valid returns true if the iterator is pointing at valid data and is error free.
 	Valid() bool
+	// Error returns any errors accumulated during the iterators lifetime.
 	Error() error
+	// Exhaust seeks to the first position in the Iterator and iterates through all
+	// segments until the Iterator is exhausted.
 	Exhaust() bool
 }
 
@@ -78,7 +85,6 @@ func New(
 	tran Transport,
 	rng telem.TimeRange,
 	keys channel.Keys,
-	output chan<- Response,
 ) (Iterator, error) {
 	sCtx, cancel := signal.WithCancel(ctx)
 
@@ -124,6 +130,7 @@ func New(
 
 	if needLocal {
 		numSenders += 1
+		numReceivers += 1
 		localIter, err := newLocalIterator(db, resolver.HostID(), rng, batch.Local)
 		if err != nil {
 			cancel()
@@ -195,7 +202,7 @@ func New(
 		SourceTargets: receiverAddresses,
 		SinkTargets:   []address.Address{"filter"},
 		Stitch:        plumber.StitchUnary,
-		Capacity:      1,
+		Capacity:      numReceivers,
 	}.PreRoute(pipe))
 
 	if c.Error() != nil {
@@ -207,98 +214,110 @@ func New(
 		panic(err)
 	}
 
-	seg.OutTo(confluence.NewInlet[Response](output))
+	res := confluence.NewStream[Response](numReceivers)
+
+	seg.OutTo(res)
 	seg.Flow(sCtx, confluence.CloseInletsOnExit())
 
-	return &iterator{emitter: emit, sync: sync, wg: sCtx, cancel: cancel}, nil
+	return &iterator{
+		emitter:   emit,
+		sync:      sync,
+		wg:        sCtx,
+		cancel:    cancel,
+		responses: res.Outlet(),
+	}, nil
 }
 
 type iterator struct {
-	emitter *emitter
-	sync    *synchronizer
-	cancel  context.CancelFunc
-	wg      signal.WaitGroup
-	_error  error
+	emitter   *emitter
+	sync      *synchronizer
+	cancel    context.CancelFunc
+	wg        signal.WaitGroup
+	_error    error
+	responses <-chan Response
 }
 
+func (i *iterator) Responses() <-chan Response { return i.responses }
+
+// Next implements Iterator.
 func (i *iterator) Next() bool {
 	i.emitter.next()
 	return i.ack(Next)
 }
 
+// Prev implements Iterator.
 func (i *iterator) Prev() bool {
 	i.emitter.Prev()
 	return i.ack(Prev)
 }
 
+// First implements Iterator.
 func (i *iterator) First() bool {
 	i.emitter.First()
 	return i.ack(First)
 }
 
+// Last implements Iterator.
 func (i *iterator) Last() bool {
 	i.emitter.Last()
 	return i.ack(Last)
 }
 
+// NextSpan implements Iterator.
 func (i *iterator) NextSpan(span telem.TimeSpan) bool {
 	i.emitter.NextSpan(span)
 	return i.ack(NextSpan)
 }
 
+// PrevSpan implements Iterator.
 func (i *iterator) PrevSpan(span telem.TimeSpan) bool {
 	i.emitter.PrevSpan(span)
 	return i.ack(PrevSpan)
 }
 
+// NextRange implements Iterator.
 func (i *iterator) NextRange(tr telem.TimeRange) bool {
 	i.emitter.NextRange(tr)
 	return i.ack(NextRange)
 }
 
+// SeekFirst implements Iterator.
 func (i *iterator) SeekFirst() bool {
 	i.emitter.SeekFirst()
 	return i.ack(SeekFirst)
 }
 
+// SeekLast implements Iterator.
 func (i *iterator) SeekLast() bool {
 	i.emitter.SeekLast()
 	return i.ack(SeekLast)
 }
 
+// SeekLT implements Iterator.
 func (i *iterator) SeekLT(stamp telem.TimeStamp) bool {
 	i.emitter.SeekLT(stamp)
 	return i.ack(SeekLT)
 }
 
+// SeekGE implements Iterator.
 func (i *iterator) SeekGE(stamp telem.TimeStamp) bool {
 	i.emitter.SeekGE(stamp)
 	return i.ack(SeekGE)
 }
 
+// Exhaust implements Iterator.
 func (i *iterator) Exhaust() bool {
 	i.emitter.Exhaust()
 	return i.ack(Exhaust)
 }
 
+// Valid implements Iterator.
 func (i *iterator) Valid() bool {
 	i.emitter.Valid()
 	return i.ack(Valid) && i.error() == nil
 }
 
-func (i *iterator) error() error {
-	if i._error != nil {
-		return i._error
-	}
-	if i.wg.AnyExited() {
-		i.cancel()
-		if err := i.wg.Wait(); err != nil {
-			i._error = err
-		}
-	}
-	return nil
-}
-
+// Error implements Iterator.
 func (i *iterator) Error() error {
 	if i.error() != nil {
 		return i.error()
@@ -314,15 +333,7 @@ func (i *iterator) Error() error {
 	return nil
 }
 
-func (i *iterator) ack(cmd Command) bool {
-	ok, _ := i.ackWithErr(cmd)
-	return ok
-}
-
-func (i *iterator) ackWithErr(cmd Command) (bool, error) {
-	return i.sync.sync(context.Background(), cmd)
-}
-
+// Close implements Iterator.
 func (i *iterator) Close() error {
 	defer i.cancel()
 
@@ -334,8 +345,31 @@ func (i *iterator) Close() error {
 		return errors.New("[segment.iterator] - negative ack on close. node probably unreachable")
 	}
 
+	// Prevent any further commands from being sent.
 	i.emitter.Out.Close()
 
 	// Wait on all goroutines to exit.
 	return i.wg.Wait()
+}
+
+func (i *iterator) error() error {
+	if i._error != nil {
+		return i._error
+	}
+	if i.wg.AnyExited() {
+		i.cancel()
+		if err := i.wg.Wait(); err != nil {
+			i._error = err
+		}
+	}
+	return nil
+}
+
+func (i *iterator) ack(cmd Command) bool {
+	ok, _ := i.ackWithErr(cmd)
+	return ok
+}
+
+func (i *iterator) ackWithErr(cmd Command) (bool, error) {
+	return i.sync.sync(context.Background(), cmd)
 }

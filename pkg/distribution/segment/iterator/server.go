@@ -43,7 +43,7 @@ func (sf *server) Handle(_ctx context.Context, server Server) error {
 
 	// receiver receives requests from the client and pipes them into the
 	// requestPipeline.
-	receiver := &transfluence.Receiver[Request]{Receiver: server, Name: "Server"}
+	receiver := &transfluence.Receiver[Request]{Receiver: server}
 
 	// sender receives responses from the pipeline and sends them
 	// over the network.

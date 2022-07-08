@@ -21,7 +21,7 @@ import (
 func assertResponse(
 	c,
 	n int,
-	values <-chan iterator.Response,
+	iter iterator.Iterator,
 	timeout time.Duration,
 ) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -30,15 +30,15 @@ func assertResponse(
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case v := <-values:
+		case v := <-iter.Responses():
 			if len(v.Segments) != n {
 				return errors.Newf("expected %v segments, received %v", n, len(v.Segments))
 			}
 		}
 	}
 	select {
-	case <-values:
-		return errors.Newf("expected no more values, received extra response")
+	case <-iter.Responses():
+		return errors.Newf("expected no more iter, received extra response")
 	case <-ctx.Done():
 		return nil
 	}
@@ -51,7 +51,6 @@ var _ = Describe("Compound", Ordered, func() {
 		iter      iterator.Iterator
 		builder   *mock.StorageBuilder
 		nChannels int
-		values    chan iterator.Response
 	)
 	BeforeAll(func() {
 		log = zap.NewNop()
@@ -138,7 +137,6 @@ var _ = Describe("Compound", Ordered, func() {
 
 		time.Sleep(100 * time.Millisecond)
 
-		values = make(chan iterator.Response)
 		iter, err = iterator.New(
 			ctx,
 			store2.Cesium,
@@ -147,13 +145,12 @@ var _ = Describe("Compound", Ordered, func() {
 			node2Transport,
 			telem.TimeRangeMax,
 			keys,
-			values,
 		)
 		Expect(err).ToNot(HaveOccurred())
 	})
 	AfterAll(func() {
 		Expect(iter.Close()).To(Succeed())
-		_, ok := <-values
+		_, ok := <-iter.Responses()
 		Expect(ok).To(BeFalse())
 		Expect(builder.Close()).To(Succeed())
 	})
@@ -164,7 +161,7 @@ var _ = Describe("Compound", Ordered, func() {
 				Expect(assertResponse(
 					nChannels,
 					1,
-					values,
+					iter,
 					20*time.Millisecond,
 				)).To(Succeed())
 			})
@@ -176,7 +173,7 @@ var _ = Describe("Compound", Ordered, func() {
 				Expect(assertResponse(
 					nChannels,
 					1,
-					values,
+					iter,
 					20*time.Millisecond,
 				)).To(Succeed())
 			})
@@ -188,7 +185,7 @@ var _ = Describe("Compound", Ordered, func() {
 				Expect(assertResponse(
 					nChannels,
 					1,
-					values,
+					iter,
 					20*time.Millisecond,
 				)).To(Succeed())
 			})
@@ -200,7 +197,7 @@ var _ = Describe("Compound", Ordered, func() {
 				Expect(assertResponse(
 					nChannels*2,
 					1,
-					values,
+					iter,
 					20*time.Millisecond,
 				)).To(Succeed())
 			})
@@ -212,7 +209,7 @@ var _ = Describe("Compound", Ordered, func() {
 				Expect(assertResponse(
 					nChannels*2,
 					1,
-					values,
+					iter,
 					20*time.Millisecond,
 				)).To(Succeed())
 			})
@@ -226,7 +223,7 @@ var _ = Describe("Compound", Ordered, func() {
 				Expect(assertResponse(
 					nChannels*3,
 					1,
-					values,
+					iter,
 					30*time.Millisecond,
 				))
 			})
