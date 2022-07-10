@@ -13,8 +13,7 @@ an efficient manner while laying the foundations for data replication and transf
 across the cluster.
 
 Defining a clear level of abstraction for the data space is challenging. The
-distribution
-layer must maintain adequate low level control to support distributed aggregation,
+distribution layer must maintain adequate low level control to support distributed aggregation,
 but must also minimize complexity (in terms of locality and networking) for the layers
 above.
 
@@ -28,7 +27,8 @@ layers).
 # Vocabulary
 
 **Sample** - An arbitrary byte array recorded at a specific point in time. \
-**Channel** - A collection of samples across a time range. \
+**Channel** - A collection of samples across a time range. These samples typically come
+from a single source (sensor, software metric, event, etc.). \
 **Segment** - A partitioned region of a channel's data. \
 **Node** - A machine in the cluster. \
 **Cluster** - A group of nodes that can communicate with each other. \
@@ -44,8 +44,8 @@ fall into the OLAP category of workloads. \
 # Motivation
 
 Separating storage and compute has become a popular technique for scaling data
-intensive systems (see [The Firebolt Cloud Data Warehouse Whitepaper](https://www.firebolt.io/resources/firebolt-cloud-data-warehouse-whitepaper))
-.
+intensive systems (see [The Firebolt Cloud Data Warehouse Whitepaper](https://www.firebolt.io/resources/firebolt-cloud-data-warehouse-whitepaper)).
+
 This decoupling is a double-edged sword. Processing engines and storage layers can 
 de developed and deployed independently, allowing the data warehouse to flexibly scale 
 to meet the needs of its users. However, processing engines must now retrieve data 
@@ -61,8 +61,7 @@ value (such as an average, sum, or count to the caller). To serve a count over o
 billion rows, a warehouse would need to retrieve massive amounts of data from storage,
 compute the count, and then return the value. To reduce network traffic, a DWH can
 pre-compute a set of materialized indexes and aggregations (i.e. pre-calculate a
-generalized
-count for common query patterns). A network trip that
+generalized count for common query patterns). A network trip that
 once required hundreds of gigabytes of data may now require only a few hundred bytes.
 Pre-aggregation is expensive, and the challenge comes in determining the most *useful*
 aggregations for a particular data set (constantly computing an un-queried average on
@@ -80,8 +79,8 @@ architecture, while the second benefits greatly from reducing the amount of netw
 hops.
 
 This RFC attempts to reconcile these two workloads by defining an architecture
-that separates the algorithms/components for storing data from those who perform
-aggregations/computations on it. Defining clear requirements and interfaces for the
+that separates the components for storing data from those who perform
+computations on it. Defining clear requirements and interfaces for the
 distribution layer is essential to the success of this reconciliation. What are the
 algorithms in the distribution layer responsible for? Should we provide rudimentary
 support for aggregations? Should we make the caller aware of the underlying network
@@ -154,7 +153,7 @@ stays consistent (this is particularly relevant for [channels](#Channels)).
 
 <p align="middle">
 <img src="images/220604-segment-distribution/distributed-storage-high-level.png"width="80%">
-<h5 align="middle">Distributed Storage Architecture</h5>
+<h5 align="middle">(Very) High Level Distributed Storage Architecture</h5>
 </p>
 
 
@@ -198,15 +197,55 @@ db.NewRetrieve().Iterate(ctx)
 
 Besides these four interfaces, Delta treats Cesium as a black box.
 
-### Integrity/Reconciliation
-
 ## Channels
+
+A channel is a collection of samples across a time-range. The data within a channel
+typically arrives from a single source. This can be a physical sensor, software sensor,
+metric, event, or any other source that emits regular, consistent, and time-ordered
+values. Channels have a few important fields:
+
+1. Data Rate - The number of samples per second of data. This data rate is fixed, 
+and cannot be changed without deleting and recreating a channel. All data written
+to the channel will have the same data rate.
+2. Name - A human-readable name for the channel. This name is not used for internal purposes.
+3. Data Type - An alias for a channel's *density* i.e. the number of bytes used by a 
+single sample. A Float64 channel would have a density of 8 bytes. This data type is 
+fixed, and cannot be changed without deleting and recreating a channel. All data 
+written to the channel will have the same data type.
+4. Key - A unique identifier for the channel across the 
+entire cluster. This key is automatically assigned and cannot be changed. See [Keys](#Keys)
+for more information on how this value is selected.
+5. Node ID - The ID of the node that owns the channel. This node is known as the 
+leaseholder, and is the only node that can write *new* channel data to disk. The 
+leaseholder is typically kept in proximity (physically) to the source generating 
+the channel's data (e.g. a sensor).
+
+Channel data is partitioned into entities called *segments*. A segment is a 
+reasonably sized (roughly one byte to ten megabyte) sub-range of a channel's
+data. When a client wants to add data to a channel, they submit a set of one or more 
+segments in a write request. The size of these segments typically grows with the data
+rate. 
+
+It's important to note the only one client can write to a channel at a time. This is
+accomplished by acquiring a lock within the cesium storage engine. This helps us to 
+solve a lot of complicated distributed systems problems (we don't need to implement
+SSI and transaction retries, for example).
+
+For more information on channel's and segments, see the 
+[Cesium RFC](https://github.com/arya-analytics/delta/blob/main/docs/rfc/220517-cesium-segment-storage.md).
 
 ### Keys
 
-### Query Patterns
+A key is a byte array that uniquely identifies a channel across the entire
+cluster. This key is composed of two parts.
 
-### Multi-Data Store Reconciliation
+1. The ID of the leaseholder node for the channel.
+2. An auto-incrementing counter for the Cesium DB on the leaseholder node where channel
+data is written to.
+
+Together, these two elements guarantee to uniqueness. By keeping the lease node ID in 
+the key, we can also avoid needing to make a key-value
+lookup when resolving addresses of nodes in the cluster.
 
 ## Segment Reads
 
@@ -221,5 +260,3 @@ Besides these four interfaces, Delta treats Cesium as a black box.
 ### Query Patterns
 
 ### Networking Details
-
-## Distributed Physical Plans
