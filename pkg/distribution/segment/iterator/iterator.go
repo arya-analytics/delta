@@ -323,12 +323,8 @@ func (i *iterator) Error() error {
 		return i.error()
 	}
 	i.emitter.Error()
-	ok, err := i.ackWithErr(Error)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return errors.New("[iterator] - non positive ack")
+	if ok, err := i.ackWithErr(Error); !ok || err != nil {
+		return errors.CombineErrors(err, errors.New("[iterator] - non positive ack"))
 	}
 	return nil
 }
@@ -337,7 +333,7 @@ func (i *iterator) Error() error {
 func (i *iterator) Close() error {
 	defer i.cancel()
 
-	// Wait for all iterator internal operations to complete.
+	// Let all iterators (remote and local) know that it's time to stop.
 	i.emitter.Close()
 
 	// Wait for all nodes to acknowledge a safe closure.
@@ -356,13 +352,13 @@ func (i *iterator) error() error {
 	if i._error != nil {
 		return i._error
 	}
-	if i.wg.AnyExited() {
-		i.cancel()
-		if err := i.wg.Wait(); err != nil {
-			i._error = err
-		}
+	select {
+	case <-i.wg.Stopped():
+		i._error = i.wg.Wait()
+		return i._error
+	default:
+		return nil
 	}
-	return nil
 }
 
 func (i *iterator) ack(cmd Command) bool {

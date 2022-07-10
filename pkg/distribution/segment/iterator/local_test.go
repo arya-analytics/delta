@@ -1,7 +1,6 @@
 package iterator_test
 
 import (
-	"github.com/arya-analytics/cesium"
 	"github.com/arya-analytics/cesium/testutil/seg"
 	"github.com/arya-analytics/delta/pkg/distribution/channel"
 	"github.com/arya-analytics/delta/pkg/distribution/mock"
@@ -51,12 +50,8 @@ var _ = Describe("Local", Ordered, func() {
 		var keys channel.Keys
 		for _, ch := range channels {
 			keys = append(keys, ch.Key())
-			req, res := make(chan cesium.CreateRequest), make(chan cesium.CreateResponse)
-			go func() {
-				err := store1.Cesium.NewCreate().WhereChannels(ch.Key().Cesium()).
-					Stream(ctx, req, res)
-				Expect(err).ToNot(HaveOccurred())
-			}()
+			req, res, err := store1.Cesium.NewCreate().WhereChannels(ch.Key().Cesium()).Stream(ctx)
+			Expect(err).ToNot(HaveOccurred())
 			stc := &seg.StreamCreate{
 				Req:               req,
 				Res:               res,
