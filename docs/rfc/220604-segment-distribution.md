@@ -35,6 +35,8 @@ from a single source (sensor, software metric, event, etc.). \
 **Leaseholder** - A node that holds a lease on a particular piece of data. The
 leaseholder is the only node
 that can modify the data. \
+**Gateway** - The node that receives a query, and is responsible for executing it
+on the cluster. \
 **Data Warehouse (DWH)** - A system used for storing and reporting data for analysis
 and business intelligence purposes. Data warehouses typically involve long-running
 queries on much larger data sets than typical OLTP systems. Data warehouse queries
@@ -243,7 +245,7 @@ cluster. This key is composed of two parts.
 2. An auto-incrementing counter for the Cesium DB on the leaseholder node where channel
 data is written to.
 
-Together, these two elements guarantee to uniqueness. By keeping the lease node ID in 
+Together, these two elements guarantee uniqueness. By keeping the lease node ID in 
 the key, we can also avoid needing to make a key-value
 lookup when resolving addresses of nodes in the cluster.
 
@@ -251,7 +253,44 @@ lookup when resolving addresses of nodes in the cluster.
 
 ### Query Patterns
 
+The distribution layer focuses on serving a single query type: sequential iteration over
+large volumes of unprocessed channel data. This 'scan' style pattern serves as the 
+basis for adding aggregation and computation to layers above. To open a query, a client
+must provide two pieces of information:
+
+1. A set of channel keys.
+2. A time range.
+
 ### Iteration
+
+After submitting a query, distribution layer returns a `segment.Iterator` that traverses
+the segments in the range. The caller can seek the iterator to different positions 
+in the range using the `SeekFirst`, `SeekLast`, `SeekLT`, `SeekGE`, and `Seek` methods.
+Once in the correct position, the caller can get the next segment using the `Next` 
+method, or the previous segment using the `Prev` method. 
+
+They can also traverse fixed time spans using the `NextSpan` and `PrevSpan` methods; 
+these can return a partial segment, multiple segments, or no segments at all. These two 
+methods are particularly useful for controlling data flow across the cluster. By altering 
+the time span passed, the caller can control the amount of memory, cpu, and network bandwidth used.
+
+Internally, the `segment.Iterator` implementation has the following structure:
+
+<p align="middle">
+<img src="images/220604-segment-distribution/segment-iterator-gateway.png"width="80%">
+<h5 align="middle">Segment Iterator - Gateway Node </h5>
+</p>
+
+When a client makes a call to `iterator.New`, the distribution layer assembles the 
+iterator components in a multistep process. 
+
+1. The DL validates the channel keys to ensure that they exist in the cluster.
+2. The DL resolves the leaseholder node for each channel. These nodes are grouped 
+into two broad categories: local and remote.
+3. If necessary, the DL opens a local iterator on the gateway node for any local channels.
+4. If necessary, the DL opens a streaming transport to each remote node for any channels
+with non-gateway leaseholders. It then sends an `Open` request containing the keys and
+time-range. The remote node acknowledges the response by opening a local iterator.
 
 ### Networking Details
 
