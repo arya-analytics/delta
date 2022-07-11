@@ -26,7 +26,9 @@ The Go language provides several primitives for managing the lifecycle of a goro
 its dependent routines have exited. `context.Context`and `context.CancelFunc` allow a
 GR to exit when a request/process is completed or aborted. Separating these two
 constructs is useful for abstraction and modularity, but can result in the misuse of
-context variables, leading to leaky goroutines and unpredictable concurrency.
+context variables, leading to leaky goroutines and unpredictable concurrency. We 
+need an effective way to combine these two systems in a way that doesn't tarnish their
+semantics.
 
 A key challenge in designing a solution is guaranteeing its applicability across both
 request and application scopes. Request scoped routines process values related to a
