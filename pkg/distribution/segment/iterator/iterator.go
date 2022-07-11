@@ -342,7 +342,7 @@ func (i *iterator) Close() error {
 	}
 
 	// Prevent any further commands from being sent.
-	i.emitter.Out.Close()
+	i.emitter.CloseInlets()
 
 	// Wait on all goroutines to exit.
 	return i.wg.Wait()

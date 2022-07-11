@@ -19,10 +19,8 @@ above.
 
 This RFC lays out a domain-oriented, locality abstracted interface that allows callers
 to read and write data to the cluster as if it was a single machine. This interface
-does not require the user to be aware of the underlying storage location, but provides
-additional context if the caller wants to perform network optimization themselves (this
-is a similar approach to the one taken by CockroachDB between their transaction and SQL
-layers).
+does not require the user to be aware of the storage topology, but provides
+additional context if the caller wants to perform network optimization themselves.
 
 # Vocabulary
 
@@ -59,7 +57,7 @@ engine must retrieve OTN from the storage layer. This idea, while obvious, is
 challenging to implement.
 
 DWH queries typically perform aggregations on large spans of data, returning a small
-value (such as an average, sum, or count to the caller). To serve a count over one
+value (such as an average, sum, or count) to the caller. To serve a count over one
 billion rows, a warehouse would need to retrieve massive amounts of data from storage,
 compute the count, and then return the value. To reduce network traffic, a DWH can
 pre-compute a set of materialized indexes and aggregations (i.e. pre-calculate a
@@ -115,7 +113,7 @@ plan for a particular query. Parsing a physical plan that can be distributed
 across multiple nodes is by no means an easy task. CockroachDB was already several
 years old before the development team began to implement these optimizations.
 By providing topology abstraction in the distribution layer, we enable a simple path
-forward to a Delta MVP while laying the groundwork for distributed optimizations.
+forward to a Delta MVP while laying the groundwork for distributed query processing.
 
 ## Principles
 
@@ -203,10 +201,10 @@ Besides these four interfaces, Delta treats Cesium as a black box.
 
 A channel is a collection of samples across a time-range. The data within a channel
 typically arrives from a single source. This can be a physical sensor, software sensor,
-metric, event, or any other source that emits regular, consistent, and time-ordered
+metric, event, or any other entity that emits regular, consistent, and time-ordered
 values. Channels have a few important fields:
 
-1. Data Rate - The number of samples per second of data. This data rate is fixed, 
+1. Data Rate - The number of samples per second of data (Hz). This data rate is fixed, 
 and cannot be changed without deleting and recreating a channel. All data written
 to the channel will have the same data rate.
 2. Name - A human-readable name for the channel. This name is not used for internal purposes.
@@ -245,9 +243,9 @@ cluster. This key is composed of two parts.
 2. An auto-incrementing counter for the Cesium DB on the leaseholder node where channel
 data is written to.
 
-Together, these two elements guarantee uniqueness. By keeping the lease node ID in 
+Together, these two elements guarantee uniqueness. By keeping the node ID in 
 the key, we can also avoid needing to make a key-value
-lookup when resolving addresses of nodes in the cluster.
+lookup when resolving the location of the channel's leaseholder.
 
 ## Segment Reads
 
@@ -281,6 +279,8 @@ Internally, the `segment.Iterator` implementation has the following structure:
 <h5 align="middle">Segment Iterator - Gateway Node </h5>
 </p>
 
+#### Opening an Iterator
+
 When a client makes a call to `iterator.New`, the distribution layer assembles the 
 iterator components in a multistep process. 
 
@@ -290,9 +290,79 @@ into two broad categories: local and remote.
 3. If necessary, the DL opens a local iterator on the gateway node for any local channels.
 4. If necessary, the DL opens a streaming transport to each remote node for any channels
 with non-gateway leaseholders. It then sends an `Open` request containing the keys and
-time-range. The remote node acknowledges the response by opening a local iterator.
+time-range. The remote node acknowledges the response by opening a local iterator on its
+own data store.
 
-### Networking Details
+If all of these steps complete successfully, the DL returns the iterator to the 
+client where it can begin processing requests. 
+
+#### Execution Flow
+
+Let's say the caller makes a call to the `First` method (retrieves the first segment 
+in the range). Let's also say we're reading channel data on nodes 3 (the gateway), 5, and 7. The execution flow is as 
+follows:
+
+1. The emitter translates the method call into a transportable request, and emits the 
+value to the broadcaster. The iterator then makes a call to the synchronizer that 
+waits for all nodes (3,5,7) to acknowledge the request execution before returning 
+to the caller. This all occurs synchronously within the `First` method body.
+2. The broadcaster receives the request, and distributes it to the remote sender and 
+local iterator.
+3. The local iterator (Node 3) receives the request and executes it on the data store. The local iterator responds to the synchronizer with an
+acknowledgement that the request was executed successfully.
+4. The remote sender receives the request and sends it to Nodes 5 and 7. 
+5. Nodes 5 and 7 receive the request and execute it on their data stores. They respond to the gateway with an acknowledgement that
+the request was executed successfully. 
+6. Receivers for nodes 5 and 7 forward the acknowledgements back to the synchronizer.
+7. The synchronizer receives the acknowledgements and returns `true`from the `First` 
+method. The caller is now free to make more method calls.
+8. The local iterator (node 3) finishes reading the segment from disk and returns it to
+the client. 
+9. Nodes 5 and 7 finish reading the segment from disk and send it over the network 
+to the gateway. 
+10. The gateway receives the segments from nodes 5 and 7 and returns them to the client.
+
+Two distinct processes occur during a method call: acknowledgement and
+data transfer. Acknowledgement, which coordinates iterator validity state across 
+the cluster, is done synchronously before the method returns. Acknowledgement 
+requires no disk IO and only small network payloads, making it efficient to do 
+synchronously. Data transfer, on the other hand, is IO and network intensive. This 
+process is done concurrently; batches of segments are returned to the caller via a 
+channel. Transport and channel buffers are used for flow control. 
+
+#### Error Handling 
+
+Errors are communicated to the caller via iterator validity state during method calls. 
+If any seeking or traversal calls return `false`, the iterator has either reached the 
+edges of the range or has encountered an error. In either of these cases, the caller 
+is expected to make a call to the `Error` or `Close` methods, both of which return error
+most recently accumulated by the iterator.
+
+All errors are considered fatal i.e. any error encountered, 
+whether on disk or over the network will result in the complete shutdown of the 
+iterator. The caller is expected to open a new iterator to continue operations. This is 
+mainly for simplicity, and future improvements may include automatic retries and 
+transient error handling.
+
+### Closing an Iterator
+
+There are two ways of closing an iterator: by cancelling the context provided to 
+`iterator.New` or calling the `Close` method. Canceling the context immediately 
+aborts operations and frees all resources. `Close`, on the other hand, shuts the 
+iterator down gracefully. The process is as follows:
+
+1. The emitter emits a `Close` request to the broadcaster. The iterator then makes a 
+call to the synchronizer that waits for all nodes to acknowledge the closure.
+2. The emitter closes its output channel, which signals to the broadcaster and 
+sender to shut down.
+3. Once all nodes return their last segment, they close their network transports.
+4. The Gateway node receivers detect the closures and close their output channels. 
+5. These closures are propagated to the filter, which closes its output channel, 
+signaling to the caller that the final segment was returned.
+6. `Close` waits for all components to exit before returning any accumulated errors.
+
+By calling `Close`, the caller can ensure that they have received all data from the 
+iterator before moving on.
 
 ## Segment Writes
 
