@@ -73,7 +73,7 @@ The `Context` type provides a simple interface for forking a new routine.
 
 ```go
 type Go interface {
-Go(f func (ctx Context) error, opts ...GoOption)
+    Go(f func (ctx Context) error, opts ...GoOption)
 }
 ```
 
@@ -94,8 +94,8 @@ The `Context` type provides an interface that extends the methods from `sync.Wai
 
 ```go
 type WaitGroup interface {
-Wait() error
-Stopped() <-chan struct{}
+    Wait() error
+    Stopped() <-chan struct{}
 }
 ```
 
@@ -109,7 +109,7 @@ transient errors back to the caller:
 
 ```go
 type Errors interface {
-	Transient() chan error
+    Transient() chan error
 }
 ```
 
