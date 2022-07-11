@@ -54,20 +54,20 @@ the challenges of managing goroutines. Signal is not attempting to reinvent
 the wheel, but rather to draw inspiration from battle tested solutions, albeit with
 a few modifications to serve Delta's needs.
 
-CockroachDB's [CtxGroup](https://github.com/cockroachdb/cockroach/tree/master/pkg/util/ctxgroup)
+CockroachDB's [ctxgroup](https://github.com/cockroachdb/cockroach/tree/master/pkg/util/ctxgroup)
 package merges `errgroup.Group` and `context.Context` into a single
 type `ctxgroup.Group`
 that injects a context into each goroutine associated with a particular
 request, as opposed to asking the caller to provide one explicitly. This is a simple
 way to clearly link goroutines to a request and prevent context misuse.
 
-Their [stopper](https://github.com/cockroachdb/cockroach/blob/master/pkg/cli/start.go)
-package was written before the addition of the `context` package to the standard library
-in Go 1.7. It fills a similar role, but uses channels to send shutdown signals to
+An alternative is their [stopper](https://github.com/cockroachdb/cockroach/blob/master/pkg/cli/start.go)
+package that was written before the addition of the `context` package to the standard 
+library in Go 1.7. It fills a similar role, but uses channels to send shutdown signals to
 GRs. It also adds tracing, panic recovery, deferals, and leak detection.
 
 The `signal` package's core `Context` type essentially modernizes `stopper` by
-merging it with `ctxgroup.Group.`
+merging it with `ctxgroup.Group`.
 
 ## Grouping Routines
 
@@ -80,15 +80,16 @@ type Go interface {
 ```
 
 It's the responsibility of the caller to ensure that the routine exits when the
-injected context is canceled. If routine exits before the context is canceled with
-a non-nil error, the context will be canceled. This behavior matches `errgroup.Group`
+injected context is canceled. If a routine exits with a non-nil error the context is 
+canceled, signaling other routines to exit.
+This behavior matches `errgroup.Group`
 and is a useful feature for managing goroutines that depend on each other.
 
 The `Go` method can also receive a list of options. These include parameters for adding
-conditional deferals, tracing, panic recovery etc. The goal of these options is to allow
+conditional deferals, tracing, panic recovery, etc. The goal of these options is to allow
 the caller to modify the behavior of the routine without having to modify the
-definition of f itself. This is particularly useful for handling functions that can
-operate both within an operation and request scope.
+definition of `f`. This is particularly useful for handling functions that can
+operate both within an application and request scope.
 
 ## Waiting for Routines to Exit
 
