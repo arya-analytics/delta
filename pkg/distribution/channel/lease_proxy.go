@@ -4,16 +4,19 @@ import (
 	"context"
 	"github.com/arya-analytics/aspen"
 	"github.com/arya-analytics/cesium"
+	"github.com/arya-analytics/delta/pkg/distribution/node"
 	"github.com/arya-analytics/delta/pkg/proxy"
+	"github.com/arya-analytics/delta/pkg/resource"
 	"github.com/arya-analytics/x/gorp"
 )
 
 type leaseProxy struct {
-	cluster    aspen.Cluster
-	metadataDB *gorp.DB
-	cesiumDB   cesium.DB
-	transport  CreateTransport
-	router     proxy.BatchFactory[Channel]
+	cluster   aspen.Cluster
+	db        *gorp.DB
+	cesiumDB  cesium.DB
+	transport CreateTransport
+	router    proxy.BatchFactory[Channel]
+	resources *resource.Service
 }
 
 func newLeaseProxy(
@@ -23,22 +26,30 @@ func newLeaseProxy(
 	transport CreateTransport,
 ) *leaseProxy {
 	p := &leaseProxy{
-		cluster:    cluster,
-		metadataDB: metadataDB,
-		cesiumDB:   cesiumDB,
-		transport:  transport,
-		router:     proxy.NewBatchFactory[Channel](cluster.HostID()),
+		cluster:   cluster,
+		db:        metadataDB,
+		cesiumDB:  cesiumDB,
+		transport: transport,
+		router:    proxy.NewBatchFactory[Channel](cluster.HostID()),
 	}
 	p.transport.Handle(p.handle)
 	return p
 }
 
 func (lp *leaseProxy) handle(ctx context.Context, msg CreateMessage) (CreateMessage, error) {
-	channels, err := lp.create(ctx, msg.Channels)
-	return CreateMessage{Channels: channels}, err
+	txn := lp.db.BeginTxn()
+	channels, err := lp.create(ctx, txn, msg.Channels)
+	if err != nil {
+		return CreateMessage{}, err
+	}
+	return CreateMessage{Channels: channels}, txn.Commit()
 }
 
-func (lp *leaseProxy) create(ctx context.Context, channels []Channel) ([]Channel, error) {
+func (lp *leaseProxy) create(
+	ctx context.Context,
+	txn gorp.Txn,
+	channels []Channel,
+) ([]Channel, error) {
 	batch := lp.router.Batch(channels)
 	oChannels := make([]Channel, 0, len(channels))
 	for nodeID, entries := range batch.Remote {
@@ -48,7 +59,7 @@ func (lp *leaseProxy) create(ctx context.Context, channels []Channel) ([]Channel
 		}
 		oChannels = append(oChannels, remoteChannels...)
 	}
-	ch, err := lp.createLocal(batch.Local)
+	ch, err := lp.createLocal(txn, batch.Local)
 	if err != nil {
 		return oChannels, err
 	}
@@ -56,7 +67,10 @@ func (lp *leaseProxy) create(ctx context.Context, channels []Channel) ([]Channel
 	return oChannels, nil
 }
 
-func (lp *leaseProxy) createLocal(channels []Channel) ([]Channel, error) {
+func (lp *leaseProxy) createLocal(
+	txn gorp.Txn,
+	channels []Channel,
+) ([]Channel, error) {
 	for i, ch := range channels {
 		key, err := lp.cesiumDB.CreateChannel(ch.Cesium)
 		if err != nil {
@@ -66,10 +80,32 @@ func (lp *leaseProxy) createLocal(channels []Channel) ([]Channel, error) {
 	}
 	// TODO: add transaction rollback to cesium db if this fails.
 	if err := gorp.NewCreate[Key, Channel]().
-		Entries(&channels).Exec(lp.metadataDB); err != nil {
+		Entries(&channels).Exec(txn); err != nil {
 		return nil, err
 	}
-	return channels, nil
+	return channels, lp.maybeSetResources(txn, channels)
+}
+
+func (lp *leaseProxy) maybeSetResources(
+	txn gorp.Txn,
+	channels []Channel,
+) error {
+	if lp.resources != nil {
+		w := lp.resources.NewWriter(txn)
+		for _, channel := range channels {
+			rtk := ResourceTypeKey(channel.Key())
+			if err := w.SetResource(rtk); err != nil {
+				return err
+			}
+			if err := w.SetRelationship(
+				node.ResourceTypeKey(channel.NodeID),
+				rtk,
+			); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (lp *leaseProxy) createRemote(ctx context.Context,

@@ -5,7 +5,9 @@ import (
 	"github.com/arya-analytics/aspen"
 	"github.com/arya-analytics/cesium"
 	"github.com/arya-analytics/delta/pkg/distribution/node"
+	"github.com/arya-analytics/delta/pkg/resource"
 	"github.com/arya-analytics/x/filter"
+	"github.com/cockroachdb/errors"
 )
 
 // Key represents a unique identifier for a Channel. This value is guaranteed to be
@@ -21,6 +23,15 @@ func NewKey(nodeID aspen.NodeID, cesiumKey cesium.ChannelKey) (key Key) {
 	return key
 }
 
+func ParseKey(s string) (k Key, err error) {
+	b := []byte(s)
+	if len(b) != len(k) {
+		return k, errors.New("[channel.TypeKey] - invalid length")
+	}
+	copy(k[:], b)
+	return k, nil
+}
+
 // NodeID returns the id of the node embedded in the key. This node is the leaseholder
 // node for the Channel.
 func (c Key) NodeID() aspen.NodeID { return aspen.NodeID(binary.LittleEndian.Uint32(c[0:4])) }
@@ -34,10 +45,11 @@ func (c Key) Cesium() cesium.ChannelKey {
 // Lease implements the proxy.RouteUnary interface.
 func (c Key) Lease() aspen.NodeID { return c.NodeID() }
 
-//// String implements the fmt.Stringer interface.
-//func (c Key) String() string {
-//	//return fmt.Sprintf("NodeID:%s - CesiumKey %s", c.NodeID(), c.Cesium())
-//}
+func (c Key) String() string { return string(c[:]) }
+
+func ResourceTypeKey(k Key) resource.TypeKey {
+	return resource.TypeKey{Type: ResourceType, Key: k.String()}
+}
 
 type Keys []Key
 
@@ -69,7 +81,7 @@ func (k Keys) Nodes() (ids []node.ID) {
 
 type Channel struct {
 	Name   string
-	NodeID aspen.NodeID
+	NodeID node.ID
 	Cesium cesium.Channel
 }
 

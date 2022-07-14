@@ -32,8 +32,12 @@ func (r Retrieve) WhereKeys(keys ...Key) Retrieve {
 	return r
 }
 
-func (r Retrieve) Exec(ctx context.Context) error { return r.gorp.Exec(r.db) }
+func (r Retrieve) WithTxn(txn gorp.Txn) Retrieve { gorp.SetTxn(r.gorp, txn); return r }
+
+func (r Retrieve) Exec(ctx context.Context) error {
+	return r.gorp.Exec(gorp.GetTxn(r.gorp, r.db))
+}
 
 func (r Retrieve) Exists(ctx context.Context) (bool, error) {
-	return r.gorp.Exists(r.db)
+	return r.gorp.Exists(gorp.GetTxn(r.gorp, r.db))
 }

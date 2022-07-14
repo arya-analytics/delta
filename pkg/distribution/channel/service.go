@@ -3,6 +3,7 @@ package channel
 import (
 	"github.com/arya-analytics/aspen"
 	"github.com/arya-analytics/cesium"
+	"github.com/arya-analytics/delta/pkg/resource"
 	"github.com/arya-analytics/x/address"
 	"github.com/arya-analytics/x/gorp"
 )
@@ -32,3 +33,8 @@ func (s *Service) NewCreate() Create { return newCreate(s.proxy) }
 func (s *Service) NewRetrieve() Retrieve { return newRetrieve(s.metadataDB) }
 
 func (s *Service) Resolve(key Key) (address.Address, error) { return s.resolver.Resolve(key) }
+
+func (s *Service) BindResources(svc *resource.Service) {
+	svc.RegisterProvider(ResourceType, &ResourceProvider{svc: s})
+	s.proxy.resources = svc
+}

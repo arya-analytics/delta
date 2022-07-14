@@ -3,21 +3,22 @@ package resource
 import "fmt"
 
 type Relationship struct {
-	Parent string
-	Child  string
+	Parent TypeKey
+	Child  TypeKey
 }
 
 func (r Relationship) GorpKey() string {
-	return fmt.Sprintf("%s-%s", r.Parent, r.Child)
+	return fmt.Sprintf("%s:%s", r.Parent.String(), r.Child.String())
+
 }
 
 func (r Relationship) SetOptions() []interface{} { return nil }
 
 func (r Relationship) Validate() error {
-	if r.Parent == "" {
+	if r.Parent.Key == "" {
 		return fmt.Errorf("[resource] - relationship parent is required")
 	}
-	if r.Child == "" {
+	if r.Child.Key == "" {
 		return fmt.Errorf("[resource] - relationship child is required")
 	}
 	if r.Parent == r.Child {

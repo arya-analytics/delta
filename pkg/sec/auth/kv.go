@@ -12,7 +12,7 @@ type kv struct {
 	gorpDB *gorp.DB
 }
 
-func NewKV(kve kvx.KV) sec.Authenticator { return &kv{gorpDB: gorp.Wrap(kve)} }
+func NewKV(kve kvx.DB) sec.Authenticator { return &kv{gorpDB: gorp.Wrap(kve)} }
 
 // GorpKey implements the gorp.Entry interface.
 func (u usernamePasswordPair) GorpKey() string { return u.Username }

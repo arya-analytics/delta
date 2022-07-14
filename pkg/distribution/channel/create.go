@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/arya-analytics/aspen"
 	"github.com/arya-analytics/cesium"
+	"github.com/arya-analytics/x/gorp"
 	"github.com/arya-analytics/x/query"
 	"github.com/arya-analytics/x/telem"
 )
@@ -25,6 +26,8 @@ func (c Create) WithDataRate(dr telem.DataRate) Create { telem.SetDataRate(c, dr
 
 func (c Create) WithDataType(dt telem.DataType) Create { telem.SetDataType(c, dt); return c }
 
+func (c Create) WithTxn(txn gorp.Txn) Create { gorp.SetTxn(c, txn); return c }
+
 func (c Create) Exec(ctx context.Context) (Channel, error) {
 	channels, err := c.ExecN(ctx, 1)
 	if err != nil {
@@ -38,7 +41,7 @@ func (c Create) ExecN(ctx context.Context, n int) ([]Channel, error) {
 	if err != nil {
 		return channels, err
 	}
-	return c.proxy.create(ctx, channels)
+	return c.proxy.create(ctx, gorp.GetTxn(c, c.proxy.db), channels)
 }
 
 func assembleFromQuery(q query.Query, n int) ([]Channel, error) {

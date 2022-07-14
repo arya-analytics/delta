@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-var _ = Describe("Retrieve", Ordered, func() {
+var _ = Describe("getAttributes", Ordered, func() {
 	var (
 		services map[aspen.NodeID]*channel.Service
 		builder  *mock.StorageBuilder

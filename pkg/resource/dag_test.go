@@ -6,24 +6,23 @@ import (
 	"github.com/arya-analytics/x/kv/memkv"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/sirupsen/logrus"
-	"time"
 )
 
 var _ = Describe("Dag", Ordered, func() {
 	var dag *resource.DAG
 	BeforeAll(func() {
-		dag = resource.OpenDAG(gorp.Wrap(memkv.Open()))
+		dag = &resource.DAG{Txn: gorp.Wrap(memkv.Open()).BeginTxn()}
 	})
-	It("Should construct a graph", func() {
-		t0 := time.Now()
-		Expect(dag.SetResource(resource.Resource{Key: "a", Type: "a"})).To(Succeed())
-		Expect(dag.SetResource(resource.Resource{Key: "b", Type: "b"})).To(Succeed())
-		Expect(dag.SetResource(resource.Resource{Key: "c", Type: "c"})).To(Succeed())
-		Expect(dag.SetRelationship(resource.Relationship{Parent: "a", Child: "b"})).To(Succeed())
-		Expect(dag.SetRelationship(resource.Relationship{Parent: "b", Child: "c"})).To(Succeed())
-		err := dag.SetRelationship(resource.Relationship{Parent: "c", Child: "a"})
-		logrus.Info(time.Since(t0))
+	It("Should prevent circular relationships", func() {
+		aKey := resource.TypeKey{Key: "a", Type: "a"}
+		bKey := resource.TypeKey{Key: "b", Type: "b"}
+		cKey := resource.TypeKey{Key: "c", Type: "c"}
+		Expect(dag.SetResource(aKey)).To(Succeed())
+		Expect(dag.SetResource(bKey)).To(Succeed())
+		Expect(dag.SetResource(cKey)).To(Succeed())
+		Expect(dag.SetRelationship(aKey, bKey)).To(Succeed())
+		Expect(dag.SetRelationship(bKey, cKey)).To(Succeed())
+		err := dag.SetRelationship(cKey, aKey)
 		Expect(err).To(HaveOccurred())
 	})
 })
