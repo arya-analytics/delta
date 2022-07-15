@@ -1,7 +1,5 @@
 package access
 
-type ActionType string
+type Action string
 
-type Action struct {
-	Type ActionType
-}
+const ActionIrrelivant Action = "irrelivant"

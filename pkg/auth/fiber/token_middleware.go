@@ -1,50 +1,42 @@
 package fiber
 
 import (
-	"github.com/arya-analytics/delta/pkg/sec"
-	"github.com/arya-analytics/delta/pkg/sec/token"
+	fiberaccess "github.com/arya-analytics/delta/pkg/access/fiber"
+	"github.com/arya-analytics/delta/pkg/auth/token"
+	"github.com/arya-analytics/delta/pkg/user"
 	"github.com/cockroachdb/errors"
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 	"strings"
 )
 
-const (
-	localsUserKey = "userKey"
-)
+const localsUserKey = "userKey"
 
+// TokenMiddleware parses a token from the request and checks if it is valid.
+// If the token is valid, it sets the user's resource key in the request context.
 func TokenMiddleware(svc *token.Service) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		tk, err := parseToken(c)
 		if err != nil {
 			return err
 		}
-		userKey, err := svc.Validate(tk)
+		key, err := svc.Validate(tk)
 		if err != nil {
 			return err
 		}
-		setUserSubject(c, userKey)
-		return nil
+		fiberaccess.SetSubject(c, user.ResourceKey(key))
+		return c.Next()
 	}
-}
-
-func setUserSubject(c *fiber.Ctx, key uuid.UUID) {
-	c.Locals(localsUserKey, sec.NewUserSubject(key))
-}
-
-func getUserSubject(c *fiber.Ctx) sec.Subject {
-	return c.Locals(localsUserKey).(sec.Subject)
 }
 
 type tokenParser func(c *fiber.Ctx) (token string, found bool, err error)
 
 const (
-	tokenCookieName               = "token"
+	tokenCookieName               = "Token"
 	headerTokenPrefix             = "Bearer "
 	invalidAuthorizationHeaderMsg = `
 	invalid authorization header. Format should be
 
-		'Authorization: Bearer <token>'
+		'Authorization: Bearer <Token>'
 	`
 )
 
@@ -60,7 +52,7 @@ func parseToken(c *fiber.Ctx) (string, error) {
 		}
 	}
 	c.Status(fiber.StatusUnauthorized)
-	return "", errors.New("invalid token")
+	return "", errors.New("invalid Token")
 }
 
 func typeParseCookieToken(c *fiber.Ctx) (string, bool, error) {

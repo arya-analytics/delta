@@ -1,9 +1,11 @@
 package access
 
+import "github.com/arya-analytics/delta/pkg/resource"
+
 type Request struct {
-	Subject  Subject
-	Resource Resource
-	Action   Action
+	Subject resource.Key
+	Object  resource.Key
+	Action  Action
 }
 
 type Enforcer interface {

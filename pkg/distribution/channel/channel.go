@@ -26,7 +26,7 @@ func NewKey(nodeID aspen.NodeID, cesiumKey cesium.ChannelKey) (key Key) {
 func ParseKey(s string) (k Key, err error) {
 	b := []byte(s)
 	if len(b) != len(k) {
-		return k, errors.New("[channel.TypeKey] - invalid length")
+		return k, errors.New("[channel.Key] - invalid length")
 	}
 	copy(k[:], b)
 	return k, nil
@@ -47,8 +47,8 @@ func (c Key) Lease() aspen.NodeID { return c.NodeID() }
 
 func (c Key) String() string { return string(c[:]) }
 
-func ResourceTypeKey(k Key) resource.TypeKey {
-	return resource.TypeKey{Type: ResourceType, Key: k.String()}
+func ResourceTypeKey(k Key) resource.Key {
+	return resource.Key{Type: ResourceType, Key: k.String()}
 }
 
 type Keys []Key

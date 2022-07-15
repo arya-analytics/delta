@@ -3,8 +3,8 @@ package resource
 import "fmt"
 
 type Relationship struct {
-	Parent TypeKey
-	Child  TypeKey
+	Parent Key
+	Child  Key
 }
 
 func (r Relationship) GorpKey() string {

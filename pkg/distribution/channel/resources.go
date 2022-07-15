@@ -6,9 +6,7 @@ import (
 	"github.com/arya-analytics/x/gorp"
 )
 
-const (
-	ResourceType resource.Type = "channel"
-)
+const ResourceType resource.Type = "channel"
 
 type ResourceProvider struct {
 	svc *Service
@@ -20,13 +18,11 @@ func (rp *ResourceProvider) GetAttributes(txn gorp.Txn, key string) (resource.At
 		return resource.Attributes{}, err
 	}
 	var ch Channel
-	if err := rp.svc.NewRetrieve().
+	err = rp.svc.NewRetrieve().
 		WhereKeys(k).
 		Entry(&ch).
 		WithTxn(txn).
-		Exec(context.TODO()); err != nil {
-		return resource.Attributes{}, err
-	}
+		Exec(context.TODO())
 	return resource.Attributes{
 		Name: ch.Name,
 		Extra: map[string]interface{}{
@@ -34,5 +30,5 @@ func (rp *ResourceProvider) GetAttributes(txn gorp.Txn, key string) (resource.At
 			"dataRate": ch.Cesium.DataRate,
 			"dataType": ch.Cesium.DataType,
 		},
-	}, nil
+	}, err
 }

@@ -5,7 +5,7 @@ type attributeReader struct {
 	dag       DAG
 }
 
-func (r attributeReader) GetResource(key TypeKey) (Resource, error) {
+func (r attributeReader) GetResource(key Key) (Resource, error) {
 	res, err := r.dag.GetResource(key)
 	if err != nil {
 		return res, err
@@ -14,7 +14,7 @@ func (r attributeReader) GetResource(key TypeKey) (Resource, error) {
 	return res, err
 }
 
-func (r attributeReader) GetChildResources(key TypeKey) ([]Resource, error) {
+func (r attributeReader) GetChildResources(key Key) ([]Resource, error) {
 	children, err := r.dag.GetChildResources(key)
 	if err != nil {
 		return nil, err
@@ -22,7 +22,7 @@ func (r attributeReader) GetChildResources(key TypeKey) ([]Resource, error) {
 	return r.getAttributes(children)
 }
 
-func (r attributeReader) GetParentResources(key TypeKey) ([]Resource, error) {
+func (r attributeReader) GetParentResources(key Key) ([]Resource, error) {
 	parents, err := r.dag.GetParentResources(key)
 	if err != nil {
 		return nil, err
@@ -33,7 +33,7 @@ func (r attributeReader) GetParentResources(key TypeKey) ([]Resource, error) {
 func (r attributeReader) getAttributes(resources []Resource) ([]Resource, error) {
 	var err error
 	for i, res := range resources {
-		resources[i].Attrs, err = r.Providers.GetAttributes(r.dag.Txn, res.TypeKey)
+		resources[i].Attrs, err = r.Providers.GetAttributes(r.dag.Txn, res.Key)
 	}
 	return resources, err
 }

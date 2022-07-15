@@ -11,6 +11,6 @@ type (
 	ID   = aspen.NodeID
 )
 
-func ResourceTypeKey(id ID) resource.TypeKey {
-	return resource.TypeKey{Type: ResourceType, Key: strconv.Itoa(int(id))}
+func ResourceKey(id ID) resource.Key {
+	return resource.Key{Type: ResourceType, Key: strconv.Itoa(int(id))}
 }

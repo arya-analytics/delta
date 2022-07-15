@@ -12,7 +12,7 @@ func OpenService(txn gorp.Txn) (*Service, error) {
 	s := &Service{
 		Providers: map[Type]Provider{},
 	}
-	if err := s.NewWriter(txn).SetResource(RootKey); err != nil {
+	if err := s.NewWriter(txn).DefineResource(RootKey); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -20,19 +20,19 @@ func OpenService(txn gorp.Txn) (*Service, error) {
 
 const BuiltIn Type = "builtin"
 
-var RootKey = TypeKey{Type: BuiltIn, Key: "root"}
+var RootKey = Key{Type: BuiltIn, Key: "root"}
 
 type Writer interface {
-	SetResource(key TypeKey) error
-	DeleteResource(key TypeKey) error
-	SetRelationship(parent, child TypeKey) error
-	DeleteRelationship(parent, child TypeKey) error
+	DefineResource(key Key) error
+	DeleteResource(key Key) error
+	DefineRelationship(parent, child Key) error
+	DeleteRelationship(parent, child Key) error
 }
 
 type Reader interface {
-	GetResource(key TypeKey) (Resource, error)
-	GetChildResources(key TypeKey) ([]Resource, error)
-	GetParentResources(key TypeKey) ([]Resource, error)
+	GetResource(key Key) (Resource, error)
+	GetChildResources(key Key) ([]Resource, error)
+	GetParentResources(key Key) ([]Resource, error)
 }
 
 func (s *Service) NewReader(txn gorp.Txn) Reader {
@@ -55,6 +55,6 @@ func (p providers) Get(t Type) Provider {
 	return prov
 }
 
-func (p providers) GetAttributes(txn gorp.Txn, key TypeKey) (Attributes, error) {
+func (p providers) GetAttributes(txn gorp.Txn, key Key) (Attributes, error) {
 	return p.Get(key.Type).GetAttributes(txn, key.Key)
 }

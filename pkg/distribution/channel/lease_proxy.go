@@ -94,11 +94,11 @@ func (lp *leaseProxy) maybeSetResources(
 		w := lp.resources.NewWriter(txn)
 		for _, channel := range channels {
 			rtk := ResourceTypeKey(channel.Key())
-			if err := w.SetResource(rtk); err != nil {
+			if err := w.DefineResource(rtk); err != nil {
 				return err
 			}
-			if err := w.SetRelationship(
-				node.ResourceTypeKey(channel.NodeID),
+			if err := w.DefineRelationship(
+				node.ResourceKey(channel.NodeID),
 				rtk,
 			); err != nil {
 				return err

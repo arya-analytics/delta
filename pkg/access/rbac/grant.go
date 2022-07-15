@@ -18,7 +18,7 @@ type Grant struct {
 	Key           uuid.UUID
 	SubjectKeys   set.Set[access.SubjectKey]
 	ResourcePaths set.Set[path.Path]
-	ActionTypes   set.Set[access.ActionType]
+	ActionTypes   set.Set[access.Action]
 }
 
 func (g Grant) GorpKey() uuid.UUID {
