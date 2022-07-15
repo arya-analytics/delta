@@ -50,8 +50,8 @@ type Resource struct {
 	Attrs Attributes
 }
 
-func (r Resource) GorpKey() Key {
-	return r.Key
-}
+// GorpKey implements the gorp.Entry interface.
+func (r Resource) GorpKey() Key { return r.Key }
 
+// SetOptions implements the gorp.Entry interface.
 func (r Resource) SetOptions() []interface{} { return nil }

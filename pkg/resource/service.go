@@ -6,6 +6,7 @@ import (
 
 type Service struct {
 	Providers providers
+	DB        *gorp.DB
 }
 
 func OpenService(txn gorp.Txn) (*Service, error) {
@@ -35,8 +36,8 @@ type Reader interface {
 	GetParentResources(key Key) ([]Resource, error)
 }
 
-func (s *Service) NewReader(txn gorp.Txn) Reader {
-	return attributeReader{Providers: s.Providers, dag: DAG{Txn: txn}}
+func (s *Service) NewReader() Reader {
+	return attributeReader{Providers: s.Providers, dag: DAG{Txn: s.DB}}
 }
 
 func (s *Service) NewWriter(txn gorp.Txn) Writer {

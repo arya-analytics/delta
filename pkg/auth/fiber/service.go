@@ -12,7 +12,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-type Auth struct {
+type Service struct {
 	User     *user.Service
 	Token    *token.Service
 	DB       *gorp.DB
@@ -20,7 +20,7 @@ type Auth struct {
 	Enforcer access.Enforcer
 }
 
-func (s *Auth) BindTo(parent fiber.Router) {
+func (s *Service) BindTo(parent fiber.Router) {
 	router := parent.Group("/auth")
 	router.Post("/login", s.login)
 	router.Post("/register", s.register)
@@ -35,7 +35,7 @@ func (s *Auth) BindTo(parent fiber.Router) {
 	protected.Post("/change-username", s.changeUsername)
 }
 
-func (s *Auth) login(c *fiber.Ctx) error {
+func (s *Service) login(c *fiber.Ctx) error {
 	var creds auth.InsecureCredentials
 	if err := c.BodyParser(&creds); err != nil {
 		c.Status(fiber.StatusBadRequest)
@@ -58,7 +58,7 @@ type registrationRequest struct {
 	auth.InsecureCredentials
 }
 
-func (s *Auth) register(c *fiber.Ctx) error {
+func (s *Service) register(c *fiber.Ctx) error {
 	var req registrationRequest
 	txn := s.DB.BeginTxn()
 	if err := c.BodyParser(&req); err != nil {
@@ -86,7 +86,7 @@ type changePasswordRequest struct {
 	NewPassword password.Raw `json:"newPassword"`
 }
 
-func (s *Auth) changePassword(c *fiber.Ctx) error {
+func (s *Service) changePassword(c *fiber.Ctx) error {
 	var cpr changePasswordRequest
 	txn := s.DB.BeginTxn()
 	if err := c.BodyParser(&cpr); err != nil {
@@ -114,7 +114,7 @@ type changeUserNameRequest struct {
 	NewUsername string `json:"username"`
 }
 
-func (s *Auth) changeUsername(c *fiber.Ctx) error {
+func (s *Service) changeUsername(c *fiber.Ctx) error {
 	var cpr changeUserNameRequest
 	txn := s.DB.BeginTxn()
 	if err := c.BodyParser(&cpr); err != nil {
@@ -137,7 +137,7 @@ func (s *Auth) changeUsername(c *fiber.Ctx) error {
 	return nil
 }
 
-func (s *Auth) tokenResponse(c *fiber.Ctx, u user.User) error {
+func (s *Service) tokenResponse(c *fiber.Ctx, u user.User) error {
 	tk, err := s.Token.New(u.Key)
 	if err != nil {
 		c.Status(fiber.StatusInternalServerError)
