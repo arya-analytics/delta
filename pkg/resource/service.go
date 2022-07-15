@@ -55,6 +55,6 @@ func (p providers) Get(t Type) Provider {
 	return prov
 }
 
-func (p providers) GetAttributes(txn gorp.Txn, key Key) (Attributes, error) {
-	return p.Get(key.Type).GetAttributes(txn, key.Key)
+func (p providers) GetAttributes(key Key) (Attributes, error) {
+	return p.Get(key.Type).GetAttributes(key.Key)
 }

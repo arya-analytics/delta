@@ -2,7 +2,6 @@ package user
 
 import (
 	"github.com/arya-analytics/delta/pkg/resource"
-	"github.com/arya-analytics/x/gorp"
 	"github.com/google/uuid"
 )
 
@@ -16,12 +15,12 @@ type ResourceProvider struct {
 	svc *Service
 }
 
-func (rp *ResourceProvider) GetAttributes(txn gorp.Txn, key string) (resource.Attributes, error) {
+func (rp *ResourceProvider) GetAttributes(key string) (resource.Attributes, error) {
 	k, err := uuid.Parse(key)
 	if err != nil {
 		return resource.Attributes{}, err
 	}
-	user, err := rp.svc.Retrieve(txn, k)
+	user, err := rp.svc.Retrieve(k)
 	if err != nil {
 		return resource.Attributes{}, err
 	}

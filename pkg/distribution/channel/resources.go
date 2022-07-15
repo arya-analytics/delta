@@ -3,7 +3,6 @@ package channel
 import (
 	"context"
 	"github.com/arya-analytics/delta/pkg/resource"
-	"github.com/arya-analytics/x/gorp"
 )
 
 const ResourceType resource.Type = "channel"
@@ -12,7 +11,7 @@ type ResourceProvider struct {
 	svc *Service
 }
 
-func (rp *ResourceProvider) GetAttributes(txn gorp.Txn, key string) (resource.Attributes, error) {
+func (rp *ResourceProvider) GetAttributes(key string) (resource.Attributes, error) {
 	k, err := ParseKey(key)
 	if err != nil {
 		return resource.Attributes{}, err
@@ -21,7 +20,6 @@ func (rp *ResourceProvider) GetAttributes(txn gorp.Txn, key string) (resource.At
 	err = rp.svc.NewRetrieve().
 		WhereKeys(k).
 		Entry(&ch).
-		WithTxn(txn).
 		Exec(context.TODO())
 	return resource.Attributes{
 		Name: ch.Name,
