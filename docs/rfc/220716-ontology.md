@@ -239,8 +239,32 @@ type Resource struct {
 }
 ```
 
-This is definitely more sustainable, but the idea of turning a struct into a map
-doesn't seem like a fantastic practice.
+This is definitely more sustainable. Now we can use key-access in our ABAC policies:
+
+```go
+package ontology
+
+// Enforce - A very very very very crude example.
+func Enforce(resource Resource) error {
+	if resource.Type != "channel" {
+		return errors.New("access DENIED")
+    }
+	nodeID, ok := resource.Data["nodeID"]
+	if !ok {
+		return errors.New("probably a bug")
+    }
+	if nodeID != 42 {
+		return errors.New("access DENIED")
+    }
+	return nil
+}
+```
+
+In many ways this is comparable to the `fiber.Ctx.Locals()` implementation, where
+we can set arbitrary key-value pairs and get them later. While it works, the idea
+of turning a struct into a map makes me fee a bit whoozy (kind of like injecting a 
+bunch of random variables into a context).
+
 
 
 
