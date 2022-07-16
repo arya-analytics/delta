@@ -1,7 +1,7 @@
-package resource_test
+package ontology_test
 
 import (
-	"github.com/arya-analytics/delta/pkg/resource"
+	"github.com/arya-analytics/delta/pkg/ontology"
 	"github.com/arya-analytics/x/gorp"
 	"github.com/arya-analytics/x/kv/memkv"
 	. "github.com/onsi/ginkgo/v2"
@@ -9,14 +9,14 @@ import (
 )
 
 var _ = Describe("Dag", Ordered, func() {
-	var dag *resource.DAG
+	var dag *ontology.DAG
 	BeforeAll(func() {
-		dag = &resource.DAG{Txn: gorp.Wrap(memkv.Open()).BeginTxn()}
+		dag = &ontology.DAG{DB: gorp.Wrap(memkv.Open()).BeginTxn()}
 	})
 	It("Should prevent circular relationships", func() {
-		aKey := resource.Key{Key: "a", Type: "a"}
-		bKey := resource.Key{Key: "b", Type: "b"}
-		cKey := resource.Key{Key: "c", Type: "c"}
+		aKey := ontology.Key{Key: "a", Type: "a"}
+		bKey := ontology.Key{Key: "b", Type: "b"}
+		cKey := ontology.Key{Key: "c", Type: "c"}
 		Expect(dag.DefineResource(aKey)).To(Succeed())
 		Expect(dag.DefineResource(bKey)).To(Succeed())
 		Expect(dag.DefineResource(cKey)).To(Succeed())

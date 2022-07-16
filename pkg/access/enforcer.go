@@ -1,10 +1,10 @@
 package access
 
-import "github.com/arya-analytics/delta/pkg/resource"
+import "github.com/arya-analytics/delta/pkg/ontology"
 
 type Request struct {
-	Subject resource.Key
-	Object  resource.Key
+	Subject ontology.Key
+	Object  ontology.Key
 	Action  Action
 }
 

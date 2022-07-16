@@ -1,4 +1,4 @@
-package resource
+package ontology
 
 type attributeReader struct {
 	Providers providers

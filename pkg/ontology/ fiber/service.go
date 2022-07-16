@@ -1,12 +1,12 @@
 package fiber
 
 import (
-	"github.com/arya-analytics/delta/pkg/resource"
+	"github.com/arya-analytics/delta/pkg/ontology"
 	"github.com/arya-analytics/x/query"
 	"github.com/gofiber/fiber/v2"
 )
 
-type Service struct{ reader resource.Reader }
+type Service struct{ reader ontology.Reader }
 
 func (s *Service) BindTo(parent fiber.Router) {
 	router := parent.Group("/resource")
@@ -17,7 +17,7 @@ func (s *Service) BindTo(parent fiber.Router) {
 }
 
 func (s *Service) root(c *fiber.Ctx) error {
-	root, err := s.reader.GetResource(resource.RootKey)
+	root, err := s.reader.GetResource(ontology.RootKey)
 	if err != nil {
 		c.Status(fiber.StatusInternalServerError)
 		return c.JSON(fiber.Map{"error": err.Error()})
@@ -73,8 +73,8 @@ func (s *Service) parents(c *fiber.Ctx) error {
 	return c.JSON(parents)
 }
 
-func (s *Service) parseKey(c *fiber.Ctx) (resource.Key, error) {
-	var key resource.Key
+func (s *Service) parseKey(c *fiber.Ctx) (ontology.Key, error) {
+	var key ontology.Key
 	if err := c.BodyParser(&key); err != nil {
 		c.Status(fiber.StatusBadRequest)
 		return key, c.JSON(fiber.Map{"error": err.Error()})

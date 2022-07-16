@@ -5,8 +5,8 @@ import (
 	"github.com/arya-analytics/aspen"
 	"github.com/arya-analytics/cesium"
 	"github.com/arya-analytics/delta/pkg/distribution/node"
+	"github.com/arya-analytics/delta/pkg/ontology"
 	"github.com/arya-analytics/delta/pkg/proxy"
-	"github.com/arya-analytics/delta/pkg/resource"
 	"github.com/arya-analytics/x/gorp"
 )
 
@@ -16,7 +16,7 @@ type leaseProxy struct {
 	cesiumDB  cesium.DB
 	transport CreateTransport
 	router    proxy.BatchFactory[Channel]
-	resources *resource.Service
+	resources *ontology.Service
 }
 
 func newLeaseProxy(

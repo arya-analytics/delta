@@ -1,4 +1,4 @@
-package resource
+package ontology
 
 import (
 	"github.com/arya-analytics/x/gorp"
@@ -37,11 +37,11 @@ type Reader interface {
 }
 
 func (s *Service) NewReader() Reader {
-	return attributeReader{Providers: s.Providers, dag: DAG{Txn: s.DB}}
+	return attributeReader{Providers: s.Providers, dag: DAG{DB: s.DB}}
 }
 
 func (s *Service) NewWriter(txn gorp.Txn) Writer {
-	return DAG{Txn: txn}
+	return DAG{DB: txn}
 }
 
 func (s *Service) RegisterProvider(t Type, p Provider) { s.Providers[t] = p }

@@ -5,8 +5,8 @@ import (
 	fiberaccess "github.com/arya-analytics/delta/pkg/access/fiber"
 	"github.com/arya-analytics/delta/pkg/auth"
 	"github.com/arya-analytics/delta/pkg/auth/token"
+	"github.com/arya-analytics/delta/pkg/ontology"
 	"github.com/arya-analytics/delta/pkg/password"
-	"github.com/arya-analytics/delta/pkg/resource"
 	"github.com/arya-analytics/delta/pkg/user"
 	"github.com/arya-analytics/x/gorp"
 	"github.com/gofiber/fiber/v2"
@@ -27,7 +27,7 @@ func (s *Service) BindTo(parent fiber.Router) {
 	protected := parent.Group("/protected")
 	protected.Use(TokenMiddleware(s.Token))
 	protected.Use(fiberaccess.StaticMiddleware(
-		resource.RouteKey("/auth/protected"),
+		ontology.RouteKey("/auth/protected"),
 		access.ActionIrrelivant,
 		s.Enforcer,
 	))

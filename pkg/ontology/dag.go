@@ -1,14 +1,15 @@
-package resource
+package ontology
 
 import (
 	"github.com/arya-analytics/x/gorp"
+	"github.com/arya-analytics/x/query"
 	"github.com/cockroachdb/errors"
 )
 
 // DAG is a key-value backed directed acyclic graph that implements the Writer
 // interface. It represents the central data structure for building relationships
 // between resources.
-type DAG struct{ Txn gorp.Txn }
+type DAG struct{ DB *gorp.DB }
 
 // DefineResource defines the given resource in the DAG. Both the key and the resource type
 // must be valid or an error will be returned. If the resource already exists,
@@ -19,7 +20,7 @@ func (d DAG) DefineResource(tk Key) error {
 	}
 	return gorp.NewCreate[Key, Resource]().
 		Entry(&Resource{Key: tk}).
-		Exec(d.Txn)
+		Exec(d.DB)
 }
 
 // GetResource returns the resource with the given key. If the resource does not exist,
@@ -29,7 +30,7 @@ func (d DAG) GetResource(tk Key) (Resource, error) {
 	return r, gorp.NewRetrieve[Key, Resource]().
 		WhereKeys(tk).
 		Entry(&r).
-		Exec(d.Txn)
+		Exec(d.DB)
 }
 
 // DeleteResource deletes the resource with the given key along with all parent and
@@ -114,12 +115,33 @@ func (d DAG) GetChildResources(key Key) ([]Resource, error) {
 	return d.getResources(keys)
 }
 
+func (d DAG) IterParents(key Key) func() ([]Resource, error) {
+	nextKeys := []Key{key}
+	return func() ([]Resource, error) {
+		var resources []Resource
+		for _, k := range nextKeys {
+			pr, err := d.GetParentResources(k)
+			if err != nil && err != query.NotFound {
+				return nil, err
+			}
+			resources = append(resources, pr...)
+		}
+		if len(resources) == 0 {
+			return nil, query.NotFound
+		}
+		for _, res := range resources {
+			nextKeys = append(nextKeys, res.Key)
+		}
+		return resources, nil
+	}
+}
+
 func (d DAG) getResources(keys []Key) ([]Resource, error) {
 	var resources []Resource
 	return resources, gorp.NewRetrieve[Key, Resource]().
 		WhereKeys(keys...).
 		Entries(&resources).
-		Exec(d.Txn)
+		Exec(d.DB)
 }
 
 func (d DAG) getRelationships(matcher func(Relationship) bool) ([]Relationship, error) {
@@ -127,7 +149,7 @@ func (d DAG) getRelationships(matcher func(Relationship) bool) ([]Relationship, 
 	return relationships, gorp.NewRetrieve[string, Relationship]().
 		Where(matcher).
 		Entries(&relationships).
-		Exec(d.Txn)
+		Exec(d.DB)
 }
 
 func (d DAG) getAncestors(key Key) (map[Key]Resource, error) {
@@ -174,25 +196,25 @@ func (d DAG) getDescendants(key Key) (map[Key]Resource, error) {
 func (d DAG) deleteResource(tk Key) error {
 	return gorp.NewDelete[Key, Resource]().
 		WhereKeys(tk).
-		Exec(d.Txn)
+		Exec(d.DB)
 }
 
 func (d DAG) deleteParentRelationships(tk Key) error {
 	return gorp.NewDelete[string, Relationship]().Where(func(rel Relationship) bool {
 		return rel.Child == tk
-	}).Exec(d.Txn)
+	}).Exec(d.DB)
 }
 
 func (d DAG) deleteChildRelationships(tk Key) error {
 	return gorp.NewDelete[string, Relationship]().Where(func(rel Relationship) bool {
 		return rel.Parent == tk
-	}).Exec(d.Txn)
+	}).Exec(d.DB)
 }
 
 func (d DAG) setRelationship(rel Relationship) error {
-	return gorp.NewCreate[string, Relationship]().Entry(&rel).Exec(d.Txn)
+	return gorp.NewCreate[string, Relationship]().Entry(&rel).Exec(d.DB)
 }
 
 func (d DAG) deleteRelationship(rel Relationship) error {
-	return gorp.NewDelete[string, Relationship]().WhereKeys(rel.GorpKey()).Exec(d.Txn)
+	return gorp.NewDelete[string, Relationship]().WhereKeys(rel.GorpKey()).Exec(d.DB)
 }

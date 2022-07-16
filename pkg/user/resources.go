@@ -1,28 +1,28 @@
 package user
 
 import (
-	"github.com/arya-analytics/delta/pkg/resource"
+	"github.com/arya-analytics/delta/pkg/ontology"
 	"github.com/google/uuid"
 )
 
 const ResourceType = "user"
 
-func ResourceKey(key uuid.UUID) resource.Key {
-	return resource.Key{Type: ResourceType, Key: key.String()}
+func ResourceKey(key uuid.UUID) ontology.Key {
+	return ontology.Key{Type: ResourceType, Key: key.String()}
 }
 
 type ResourceProvider struct {
 	svc *Service
 }
 
-func (rp *ResourceProvider) GetAttributes(key string) (resource.Attributes, error) {
+func (rp *ResourceProvider) GetAttributes(key string) (ontology.Attributes, error) {
 	k, err := uuid.Parse(key)
 	if err != nil {
-		return resource.Attributes{}, err
+		return ontology.Attributes{}, err
 	}
 	user, err := rp.svc.Retrieve(k)
 	if err != nil {
-		return resource.Attributes{}, err
+		return ontology.Attributes{}, err
 	}
-	return resource.Attributes{Name: user.Username}, err
+	return ontology.Attributes{Name: user.Username}, err
 }

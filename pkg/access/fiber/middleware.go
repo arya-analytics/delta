@@ -2,7 +2,7 @@ package fiber
 
 import (
 	"github.com/arya-analytics/delta/pkg/access"
-	"github.com/arya-analytics/delta/pkg/resource"
+	"github.com/arya-analytics/delta/pkg/ontology"
 	"github.com/cockroachdb/errors"
 	"github.com/gofiber/fiber/v2"
 )
@@ -10,7 +10,7 @@ import (
 // StaticMiddleware is a middleware whose action and object access parameters can
 // be described at runtime as opposed to request time.
 func StaticMiddleware(
-	object resource.Key,
+	object ontology.Key,
 	action access.Action,
 	enforcer access.Enforcer,
 ) fiber.Handler {

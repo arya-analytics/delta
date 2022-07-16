@@ -1,4 +1,4 @@
-package resource
+package ontology
 
 const (
 	RouteType Type = "route"

@@ -5,7 +5,7 @@ import (
 	"github.com/arya-analytics/aspen"
 	"github.com/arya-analytics/cesium"
 	"github.com/arya-analytics/delta/pkg/distribution/node"
-	"github.com/arya-analytics/delta/pkg/resource"
+	"github.com/arya-analytics/delta/pkg/ontology"
 	"github.com/arya-analytics/x/filter"
 	"github.com/cockroachdb/errors"
 )
@@ -47,8 +47,8 @@ func (c Key) Lease() aspen.NodeID { return c.NodeID() }
 
 func (c Key) String() string { return string(c[:]) }
 
-func ResourceTypeKey(k Key) resource.Key {
-	return resource.Key{Type: ResourceType, Key: k.String()}
+func ResourceTypeKey(k Key) ontology.Key {
+	return ontology.Key{Type: ResourceType, Key: k.String()}
 }
 
 type Keys []Key

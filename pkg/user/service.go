@@ -1,14 +1,14 @@
 package user
 
 import (
-	"github.com/arya-analytics/delta/pkg/resource"
+	"github.com/arya-analytics/delta/pkg/ontology"
 	"github.com/arya-analytics/x/gorp"
 	"github.com/google/uuid"
 )
 
 type Service struct {
 	db        *gorp.DB
-	resources *resource.Service
+	resources *ontology.Service
 }
 
 func (s *Service) Retrieve(key uuid.UUID) (User, error) {
