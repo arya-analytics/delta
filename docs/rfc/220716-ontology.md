@@ -125,10 +125,169 @@ following
 
 <p align="middle">
 <img src="images/220716-ontology/dag-bad.png" width="50%">
-<h6 align="middle">A simple channel ontology represented as a DAG</h6>
+<h6 align="middle">An invalid DAG with a directed cycle</h6>
 </p>
 
-the graph would lose its meaning; Temperature Sensor 4 belongs to the group 
-temperature sensors but the group temperature sensors is also a temperature sensor? 
-A directed acyclic graph allows us to define dynamic relationships between entities 
+the graph would lose its meaning; Temperature Sensor 4 belongs to the group
+temperature sensors but the group temperature sensors is also a temperature sensor?
+A directed acyclic graph allows us to define dynamic relationships between entities
 while maintaining a well-defined hierarchy.
+
+## Resources and Relationships
+
+Resources and relationships are the two core data types of the ontology. A resource, or
+vertex on the DAG, is a unique entity in the cluster:
+
+```go
+package ontology
+
+// Type represents a particular category of resource in the cluster (channel, user, 
+// node, etc). 
+type Type string
+
+// ID is a cluster-unique identifier for the resource, regardless of its type (this 
+// is why it's called an ID, and not just a key).
+type ID struct {
+	// Key is a unique identifier for a resource within its Type (i.e. unique to all 
+	// channels). 
+	Key string
+	// Type is the type of resource.
+	Type Type
+}
+
+type Resource struct {
+	//  The ID for the resource.
+	ID ID
+	// Additional fields that aren't important to define right now...
+}
+```
+
+A relationship, or edge on the DAG, is a directed relationship between two resources:
+
+```go
+package ontology
+
+type Relationship struct {
+	Parent ID
+	Child  ID
+}
+```
+
+Instead of using the terms 'to' and 'from', I chose 'parent' and 'child' as they
+delineate a hierarchy as opposed to a simple direction. A child is a subcomponent of
+its parent, and a parent is an aggregate of its children.
+
+## Providers
+
+If the ontology's DAG only stores references, where do we actually get resources from.
+This is where a provider comes in. A provider for a particular resource type serves as
+a gateway to the underlying service where the concrete resource is defined.
+
+The MVP interface for a provider is decidedly simple:
+
+```go
+package ontology
+
+type Provider interface {
+	// Retrieve returns data for the resource with the given ID.
+	Retrieve(ID) (interface{}, error)
+}
+```
+
+Within the ontology, we can store a map of providers for each resource type. As a caller
+traverse the DAG, we can use the providers to return the concrete resources to the
+client. Of course, we need to extend the `Resource` type to support the data payload.
+
+I've had a lot of trouble defining a good way to integrate a concrete type into a
+general `Resource.` On the one hand, I'd like the `ontology` package to have as little
+knowledge and interaction with the concrete type as possible. On the other hand, I'm not
+a fan of highly dynamic, untyped interfaces. The simplest, and most abstracted way to
+represent the payload is:
+
+```go
+package ontology
+
+type Resource struct {
+	ID ID
+	// Data can hold a struct, map, slice, etc. that represents the concrete resource ID
+	// refers to.
+	Data interface{}
+}
+```
+
+If we're exposing the resource through an API, we can serialize the Data to JSON and
+return it to the client, where they can parse the fields as they wish.
+
+The problem with this approach can be seen when attempting to implement an ABAC
+authorization system. When defining a policy, how do we extract the fields from the
+resource? The only way to do this is to use reflection, which makes me very unhappy.
+
+Another approach is to use a `fiber` styled design where the concrete data is stored
+in a string-value map:
+
+```go
+package ontology
+
+type Data map[string]interface{}
+
+type Provider interface {
+    Retrieve(ID) (Data, error)
+}
+type Resource struct {
+	ID   ID
+	Data Data
+}
+```
+
+This is definitely more sustainable, but the idea of turning a struct into a map
+doesn't seem like a fantastic practice.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
