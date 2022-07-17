@@ -15,14 +15,14 @@ type ResourceProvider struct {
 	svc *Service
 }
 
-func (rp *ResourceProvider) GetAttributes(key string) (ontology.Attributes, error) {
+func (rp *ResourceProvider) Retrieve(key string) (ontology.Data, error) {
 	k, err := uuid.Parse(key)
 	if err != nil {
-		return ontology.Attributes{}, err
+		return ontology.Data{}, err
 	}
 	user, err := rp.svc.Retrieve(k)
 	if err != nil {
-		return ontology.Attributes{}, err
+		return ontology.Data{}, err
 	}
-	return ontology.Attributes{Name: user.Username}, err
+	return ontology.Data{Name: user.Username}, err
 }

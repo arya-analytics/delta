@@ -17,7 +17,7 @@ func (s *Service) BindTo(parent fiber.Router) {
 }
 
 func (s *Service) root(c *fiber.Ctx) error {
-	root, err := s.reader.GetResource(ontology.RootKey)
+	root, err := s.reader.RetrieveResource(ontology.RootKey)
 	if err != nil {
 		c.Status(fiber.StatusInternalServerError)
 		return c.JSON(fiber.Map{"error": err.Error()})
@@ -30,7 +30,7 @@ func (s *Service) get(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	res, err := s.reader.GetResource(key)
+	res, err := s.reader.RetrieveResource(key)
 	if err != query.NotFound {
 		c.Status(fiber.StatusNotFound)
 		return c.JSON(fiber.Map{"error": err.Error()})
@@ -46,7 +46,7 @@ func (s *Service) children(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	children, err := s.reader.GetChildResources(key)
+	children, err := s.reader.RetrieveChildResources(key)
 	if err != query.NotFound {
 		c.Status(fiber.StatusNotFound)
 		return c.JSON(fiber.Map{"error": err.Error()})
@@ -62,7 +62,7 @@ func (s *Service) parents(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	parents, err := s.reader.GetParentResources(key)
+	parents, err := s.reader.RetrieveParentResources(key)
 	if err != query.NotFound {
 		c.Status(fiber.StatusNotFound)
 		return c.JSON(fiber.Map{"error": err.Error()})

@@ -8,7 +8,7 @@ import (
 
 type Service struct {
 	db        *gorp.DB
-	resources *ontology.Service
+	resources *ontology.Ontology
 }
 
 func (s *Service) Retrieve(key uuid.UUID) (User, error) {

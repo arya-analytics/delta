@@ -2,6 +2,7 @@ package ontology
 
 import (
 	"fmt"
+	"github.com/arya-analytics/delta/pkg/ontology/schema"
 )
 
 type Type string
@@ -14,7 +15,7 @@ type Type string
 // }
 //
 // They key has two elements so for two reasons. First, by storing the Type we know which
-// Provider to query for additional info on the Resource. Second, while a Key.Key may be
+// Service to query for additional info on the Resource. Second, while a Key.Key may be
 // unique for a particular resource (e.g. channel), it might not be unique across ALL
 // resources. We need something universally unique across the entire delta cluster.
 type Key struct {
@@ -23,7 +24,7 @@ type Key struct {
 	// Type defines the type of Resource the Key refers to :). For example,
 	// a channel is a Resource of type "channel". A user is a Resource of type
 	// "user".
-	Type Type
+	Type schema.Type
 }
 
 func (k Key) Validate() error {
@@ -40,14 +41,9 @@ func (k Key) String() string {
 	return fmt.Sprintf("%s:%s", k.Key, k.Type)
 }
 
-type Attributes struct {
-	Name  string
-	Extra map[string]interface{}
-}
-
 type Resource struct {
-	Key   Key
-	Attrs Attributes
+	Key  Key
+	Data schema.Entity
 }
 
 // GorpKey implements the gorp.Entry interface.

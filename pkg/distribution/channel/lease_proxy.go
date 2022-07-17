@@ -16,7 +16,7 @@ type leaseProxy struct {
 	cesiumDB  cesium.DB
 	transport CreateTransport
 	router    proxy.BatchFactory[Channel]
-	resources *ontology.Service
+	resources *ontology.Ontology
 }
 
 func newLeaseProxy(

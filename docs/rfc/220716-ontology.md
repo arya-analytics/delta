@@ -177,25 +177,25 @@ Instead of using the terms 'to' and 'from', I chose 'parent' and 'child' as they
 delineate a hierarchy as opposed to a simple direction. A child is a subcomponent of
 its parent, and a parent is an aggregate of its children.
 
-## Providers
+## Services
 
 If the ontology's DAG only stores references, where do we actually get resources? 
-This is where a provider comes in. A provider for a particular resource type serves 
+This is where a service comes in. A service for a particular resource type serves 
 as a gateway to the underlying service where the resource is stored.
 
-The MVP interface for a provider is decidedly simple:
+The MVP interface for a service is decidedly simple:
 
 ```go
 package ontology
 
-type Provider interface {
+type Service interface {
 	// Retrieve returns data for the resource with the given ID.
 	Retrieve(ID) (interface{}, error)
 }
 ```
 
-Within the ontology, we can store a map of providers for each resource type. As a caller
-traverse the DAG, we can use the provider to retrieve the data for a particular resource.
+Within the ontology, we can store a map of services for each resource type. As a caller
+traverse the DAG, we can use the service to retrieve the data for a particular resource.
 Of course, this means we need to extend the `ontology.Resource` type to support holding
 resource data along with the reference.
 
@@ -204,8 +204,8 @@ resource data along with the reference.
 The process for retrieving resource data is as follows:
 
 1. A caller traverses the DAG until they find a resource of interest.
-2. The ontology does a key-value lookup for the appropriate provider.
-3. The provider retrieve the data for the resource, and binds it to the `ontology.Resource`
+2. The ontology does a key-value lookup for the appropriate service.
+3. The service retrieve the data for the resource, and binds it to the `ontology.Resource`
 from the DAG.
 4. The `ontology.Resource` is returned to the caller.
 
@@ -246,7 +246,7 @@ package ontology
 
 type Data map[string]interface{}
 
-type Provider interface {
+type Service interface {
     Retrieve(ID) (Data, error)
 }
 type Resource struct {
@@ -292,11 +292,11 @@ GraphQL defines its resources using a Schema, where the properties (names, types
 validation rules, etc. ) are defined for each resource type. A user writes a collection
 of schemas, and then uses them to query the API.
 
-What if we extended the `Provider` interface to ask for a schema definition along 
-with its data.
+We can take a similar approach by extending the `Service` interface to ask for a schema 
+definition along with its data.
 
 ```
-type Provider interface {
+type Service interface {
    // Schema returns a schema describing the properties of the resource type.
    Schema() Schema
    ...
@@ -339,7 +339,7 @@ we do that in the microservice code itself, where the majority of the core logic
 
 This is the approach I'd like to try with the ontology, where it essentially serves 
 as an internal API between different services. Resources should *not* be defined in 
-the ontology, but in the providers that interact with it.
+the ontology, but in the services that interact with it.
 
 This approach may have unforeseen pitfalls. I guess we'll find out.
 

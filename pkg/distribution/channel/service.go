@@ -34,7 +34,7 @@ func (s *Service) NewRetrieve() Retrieve { return newRetrieve(s.metadataDB) }
 
 func (s *Service) Resolve(key Key) (address.Address, error) { return s.resolver.Resolve(key) }
 
-func (s *Service) BindResources(svc *ontology.Service) {
-	svc.RegisterProvider(ResourceType, &ResourceProvider{svc: s})
+func (s *Service) BindResources(svc *ontology.Ontology) {
+	svc.RegisterService(ResourceType, &ResourceProvider{svc: s})
 	s.proxy.resources = svc
 }

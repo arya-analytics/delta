@@ -25,7 +25,7 @@ func (d DAG) DefineResource(tk Key) error {
 
 // GetResource returns the resource with the given key. If the resource does not exist,
 // GetResource will return a query.NotFound error.
-func (d DAG) GetResource(tk Key) (Resource, error) {
+func (d DAG) RetrieveResource(tk Key) (Resource, error) {
 	var r Resource
 	return r, gorp.NewRetrieve[Key, Resource]().
 		WhereKeys(tk).
@@ -50,13 +50,13 @@ func (d DAG) DeleteResource(tk Key) error {
 // Both the parent and child resources must exist. If the relationship already exists,
 // SetRelationship will update the existing relationship.
 func (d DAG) DefineRelationship(child, parent Key) error {
-	if _, err := d.GetResource(parent); err != nil {
+	if _, err := d.RetrieveResource(parent); err != nil {
 		return errors.Wrapf(
 			err,
 			"[resource] - parent resource %s does not exist",
 		)
 	}
-	if _, err := d.GetResource(child); err != nil {
+	if _, err := d.RetrieveResource(child); err != nil {
 		return errors.Wrapf(
 			err, "[resource] - parent resource %s does not exist", child)
 	}
@@ -80,7 +80,7 @@ func (d DAG) DeleteRelationship(parent, child Key) error {
 // GetParentResources returns the resources that are parents of the given resource.
 // If the resource does not exist, GetParentResources will return a query.NotFound error.
 // If the resource has no parents, GetParentResources will return an empty slice.
-func (d DAG) GetParentResources(key Key) ([]Resource, error) {
+func (d DAG) RetrieveParentResources(key Key) ([]Resource, error) {
 	relationships, err := d.getRelationships(func(rel Relationship) bool {
 		return rel.Child == key
 	})
@@ -101,7 +101,7 @@ func (d DAG) GetParentResources(key Key) ([]Resource, error) {
 // GetChildResources returns the resources that are children of the given resource.
 // If the resource does not exist, GetChildResources will return a query.NotFound error.
 // If the resource has no children, GetChildResources will return an empty slice.
-func (d DAG) GetChildResources(key Key) ([]Resource, error) {
+func (d DAG) RetrieveChildResources(key Key) ([]Resource, error) {
 	relationships, err := d.getRelationships(func(rel Relationship) bool {
 		return rel.Parent == key
 	})
@@ -120,7 +120,7 @@ func (d DAG) IterParents(key Key) func() ([]Resource, error) {
 	return func() ([]Resource, error) {
 		var resources []Resource
 		for _, k := range nextKeys {
-			pr, err := d.GetParentResources(k)
+			pr, err := d.RetrieveParentResources(k)
 			if err != nil && err != query.NotFound {
 				return nil, err
 			}
@@ -154,7 +154,7 @@ func (d DAG) getRelationships(matcher func(Relationship) bool) ([]Relationship, 
 
 func (d DAG) getAncestors(key Key) (map[Key]Resource, error) {
 	ancestors := make(map[Key]Resource)
-	parents, err := d.GetParentResources(key)
+	parents, err := d.RetrieveParentResources(key)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +173,7 @@ func (d DAG) getAncestors(key Key) (map[Key]Resource, error) {
 
 func (d DAG) getDescendants(key Key) (map[Key]Resource, error) {
 	descendants := make(map[Key]Resource)
-	children, err := d.GetChildResources(key)
+	children, err := d.RetrieveChildResources(key)
 	if err != nil {
 		return nil, err
 	}
