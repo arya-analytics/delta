@@ -1,28 +1,37 @@
 package ontology
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/cockroachdb/errors"
+)
+
+type RelationshipType string
+
+const (
+	Parent RelationshipType = "parent"
+)
 
 type Relationship struct {
-	Parent Key
-	Child  Key
+	From ID
+	To   ID
+	Type RelationshipType
 }
 
 func (r Relationship) GorpKey() string {
-	return fmt.Sprintf("%s:%s", r.Parent.String(), r.Child.String())
+	return fmt.Sprintf("%s:%s:%s", r.From.String(), r.To.String(), r.Type)
 
 }
-
 func (r Relationship) SetOptions() []interface{} { return nil }
 
 func (r Relationship) Validate() error {
-	if r.Parent.Key == "" {
-		return fmt.Errorf("[resource] - relationship parent is required")
+	if r.From.Key == "" {
+		return errors.Newf("[resource] - relationship from is required")
 	}
-	if r.Child.Key == "" {
-		return fmt.Errorf("[resource] - relationship child is required")
+	if r.To.Key == "" {
+		return errors.Newf("[resource] - relationship to is required")
 	}
-	if r.Parent == r.Child {
-		return fmt.Errorf("[resource] - relationship parent and child are the same")
+	if r.From == r.To {
+		return errors.Newf("[resource] - relationship to and from cannot be the same")
 	}
 	return nil
 }

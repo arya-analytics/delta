@@ -5,9 +5,16 @@ type Entity struct {
 	data   map[string]interface{}
 }
 
-func Get[V Value](d Entity, k string) (V, bool) {
-	v, ok := d.data[k]
-	return v, ok
+func Get[V Value](d Entity, k string) (v V, ok bool) {
+	rv, ok := d.data[k]
+	if !ok {
+		return v, false
+	}
+	v, ok = rv.(V)
+	if !ok {
+		panic("[schema] - invalid field type")
+	}
+	return v, true
 }
 
 func Set[V Value](D Entity, k string, v V) {

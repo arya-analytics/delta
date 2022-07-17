@@ -17,7 +17,7 @@ func (s *Service) BindTo(parent fiber.Router) {
 }
 
 func (s *Service) root(c *fiber.Ctx) error {
-	root, err := s.reader.RetrieveResource(ontology.RootKey)
+	root, err := s.reader.RetrieveResource(ontology.Root)
 	if err != nil {
 		c.Status(fiber.StatusInternalServerError)
 		return c.JSON(fiber.Map{"error": err.Error()})
@@ -73,8 +73,8 @@ func (s *Service) parents(c *fiber.Ctx) error {
 	return c.JSON(parents)
 }
 
-func (s *Service) parseKey(c *fiber.Ctx) (ontology.Key, error) {
-	var key ontology.Key
+func (s *Service) parseKey(c *fiber.Ctx) (ontology.ID, error) {
+	var key ontology.ID
 	if err := c.BodyParser(&key); err != nil {
 		c.Status(fiber.StatusBadRequest)
 		return key, c.JSON(fiber.Map{"error": err.Error()})

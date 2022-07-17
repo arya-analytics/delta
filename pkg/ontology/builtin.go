@@ -5,8 +5,8 @@ const (
 	RouteType Type = "route"
 )
 
-var RootKey = Key{Type: BuiltIn, Key: "root"}
+var Root = ID{Type: BuiltIn, Key: "root"}
 
-func RouteKey(path string) Key {
-	return Key{Type: RouteType, Key: path}
+func RouteKey(path string) ID {
+	return ID{Type: RouteType, Key: path}
 }

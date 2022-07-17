@@ -14,15 +14,15 @@ var _ = Describe("Dag", Ordered, func() {
 		dag = &ontology.DAG{DB: gorp.Wrap(memkv.Open()).BeginTxn()}
 	})
 	It("Should prevent circular relationships", func() {
-		aKey := ontology.Key{Key: "a", Type: "a"}
-		bKey := ontology.Key{Key: "b", Type: "b"}
-		cKey := ontology.Key{Key: "c", Type: "c"}
+		aKey := ontology.ID{Key: "a", Type: "a"}
+		bKey := ontology.ID{Key: "b", Type: "b"}
+		cKey := ontology.ID{Key: "c", Type: "c"}
 		Expect(dag.DefineResource(aKey)).To(Succeed())
 		Expect(dag.DefineResource(bKey)).To(Succeed())
 		Expect(dag.DefineResource(cKey)).To(Succeed())
-		Expect(dag.DefineRelationship(aKey, bKey)).To(Succeed())
-		Expect(dag.DefineRelationship(bKey, cKey)).To(Succeed())
-		err := dag.DefineRelationship(cKey, aKey)
+		Expect(dag.DefineRelationship(aKey, bKey, ontology.Parent)).To(Succeed())
+		Expect(dag.DefineRelationship(bKey, cKey, ontology.Parent)).To(Succeed())
+		err := dag.DefineRelationship(cKey, aKey, ontology.Parent)
 		Expect(err).To(HaveOccurred())
 	})
 })

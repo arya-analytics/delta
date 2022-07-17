@@ -1,7 +1,14 @@
 package ontology
 
 import (
+	"github.com/arya-analytics/delta/pkg/ontology/schema"
 	"github.com/arya-analytics/x/gorp"
+)
+
+type (
+	Schema = schema.Schema
+	Entity = schema.Entity
+	Type   = schema.Type
 )
 
 type Ontology struct {
@@ -10,28 +17,22 @@ type Ontology struct {
 }
 
 func Open(db *gorp.DB) (*Ontology, error) {
-	s := &Ontology{Services: make(services)}
-	if err := s.NewWriter(db).DefineResource(RootKey); err != nil {
+	s := &Ontology{Services: make(services), DB: db}
+	if err := s.NewWriter(db).DefineResource(Root); err != nil {
 		return nil, err
 	}
 	return s, nil
 }
 
 type Writer interface {
-	DefineResource(key Key) error
-	DeleteResource(key Key) error
-	DefineRelationship(parent, child Key) error
-	DeleteRelationship(parent, child Key) error
+	DefineResource(key ID) error
+	DeleteResource(key ID) error
+	DefineRelationship(from, to ID, t RelationshipType) error
+	DeleteRelationship(from, to ID, t RelationshipType) error
 }
 
-type Reader interface {
-	RetrieveResource(key Key) (Resource, error)
-	RetrieveChildResources(key Key) ([]Resource, error)
-	RetrieveParentResources(key Key) ([]Resource, error)
-}
-
-func (s *Ontology) NewReader() Reader {
-	return attributeReader{Providers: s.Services, dag: DAG{DB: s.DB}}
+func (s *Ontology) NewRetrieve() Retrieve {
+	return newRetrieve(retrieve{db: s.DB}.exec)
 }
 
 func (s *Ontology) NewWriter(txn gorp.Txn) Writer {

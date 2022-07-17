@@ -1,10 +1,8 @@
 package ontology
 
-import "github.com/arya-analytics/delta/pkg/ontology/schema"
-
 type Service interface {
-	Schema() *schema.Schema
-	Retrieve(key string) (schema.Entity, error)
+	Schema() *Schema
+	Retrieve(key string) (Entity, error)
 }
 
 type services map[Type]Service
@@ -17,7 +15,7 @@ func (s services) Register(svc Service) {
 	s[t] = svc
 }
 
-func (s services) Retrieve(key Key) (schema.Entity, error) {
+func (s services) Retrieve(key ID) (Entity, error) {
 	svc, ok := s[key.Type]
 	if !ok {
 		panic("[ontology] - service not found")

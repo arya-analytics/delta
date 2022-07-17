@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestResource(t *testing.T) {
+func TestOntology(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "ResourceTypeKey Suite")
+	RunSpecs(t, "Ontology Suite")
 }
