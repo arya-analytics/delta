@@ -179,9 +179,9 @@ its parent, and a parent is an aggregate of its children.
 
 ## Providers
 
-If the ontology's DAG only stores references, where do we actually get resources from.
-This is where a provider comes in. A provider for a particular resource type serves as
-a gateway to the underlying service where the concrete resource is defined.
+If the ontology's DAG only stores references, where do we actually get resources? 
+This is where a provider comes in. A provider for a particular resource type serves 
+as a gateway to the underlying service where the resource is stored.
 
 The MVP interface for a provider is decidedly simple:
 
@@ -195,11 +195,22 @@ type Provider interface {
 ```
 
 Within the ontology, we can store a map of providers for each resource type. As a caller
-traverse the DAG, we can use the providers to return the concrete resources to the
-client. Of course, we need to extend the `Resource` type to support the data payload.
+traverse the DAG, we can use the provider to retrieve the data for a particular resource.
+Of course, this means we need to extend the `ontology.Resource` type to support holding
+resource data along with the reference.
 
-I've had a lot of trouble defining a good way to integrate a concrete type into a
-general `Resource.` On the one hand, I'd like the `ontology` package to have as little
+### Integrating Resource Data
+
+The process for retrieving resource data is as follows:
+
+1. A caller traverses the DAG until they find a resource of interest.
+2. The ontology does a key-value lookup for the appropriate provider.
+3. The provider retrieve the data for the resource, and binds it to the `ontology.Resource`
+from the DAG.
+4. The `ontology.Resource` is returned to the caller.
+
+I've had quite a bit of trouble defining a good way to integrate resource data into 
+the `Resource`. On the one hand, I'd like the `ontology` package to have as little
 knowledge and interaction with the concrete type as possible. On the other hand, I'm not
 a fan of highly dynamic, untyped interfaces. The simplest, and most abstracted way to
 represent the payload is:
@@ -218,11 +229,16 @@ type Resource struct {
 If we're exposing the resource through an API, we can serialize the Data to JSON and
 return it to the client, where they can parse the fields as they wish.
 
-The problem with this approach can be seen when attempting to implement an ABAC
-authorization system. When defining a policy, how do we extract the fields from the
-resource? The only way to do this is to use reflection, which makes me very unhappy.
+This approach is extremely general and loosely coupled, but poses problems when the 
+caller wants to parse the data. This can be illustrated when attempting to implement an 
+ABAC authorization system. When defining a policy, how do we extract specific 
+attributes from the resource? For example, we may allow or deny access to a channel 
+depending on its `Channel.NodeID` field. The only way to access this field is 
+through reflection, which I'd like to avoid.
 
-Another approach is to use a `fiber` styled design where the concrete data is stored
+### String-Value Maps
+
+Another approach is to use a `fiber.Map` styled design where the resource is stored
 in a string-value map:
 
 ```go
@@ -239,7 +255,8 @@ type Resource struct {
 }
 ```
 
-This is definitely more sustainable. Now we can use key-access in our ABAC policies:
+This is marginally less abstract, but definitely more sustainable. Now we can use 
+key-access in our ABAC policies:
 
 ```go
 package ontology
@@ -260,17 +277,71 @@ func Enforce(resource Resource) error {
 }
 ```
 
-In many ways this is comparable to the `fiber.Ctx.Locals()` implementation, where
+This is similar to the `fiber.Ctx.Locals()` implementation, where
 we can set arbitrary key-value pairs and get them later. While it works, the idea
-of turning a struct into a map makes me fee a bit whoozy (kind of like injecting a 
+of turning a struct into a map makes me fee a bit woozy (kind of like injecting a 
 bunch of random variables into a context).
 
+### Looking to GraphQL for Inspiration
 
+In many ways, the ontology serves a similar purpose to a GraphQL wrapper around a 
+set of microservices. Of course, the ontology can also be used as an internal bus for
+communicating data within the codebase itself. 
 
+GraphQL defines its resources using a Schema, where the properties (names, types, 
+validation rules, etc. ) are defined for each resource type. A user writes a collection
+of schemas, and then uses them to query the API.
 
+What if we extended the `Provider` interface to ask for a schema definition along 
+with its data.
 
+```
+type Provider interface {
+   // Schema returns a schema describing the properties of the resource type.
+   Schema() Schema
+   ...
+}
+```
 
+This could be particularly useful if we want to support resources writes through the 
+ontology, and could eventually allow for the creation of typesafe APIs. 
 
+### (Mild) Digression - Thinking Architecturally
+
+I'd like to make note of an important distinction between a GraphQL interface and the 
+schema concept I introduced above. Many typesafe APIs (GraphQL, gRPC, tRPC, Swagger)
+rely on custom languages to define their resources. These languages can then 
+generate code that can be imported and implemented into your general purpose 
+language of choice. 
+
+If we're talking about using a typesafe API to communicate between two microservices 
+A and B, where A stores the resource (the 'server') and B queries it (the 'client'), I 
+think it's important to ask *who is responsible for defining the API?*. 
+
+Unless the server is specifically designed to support arbitrary data types and 
+relationships (like a database), I think it's prudent to assume the server is 
+responsible for letting the client know which resources it exposes. This establishes 
+a clear contract with a single source of truth. 
+
+This leads me to ask why we define our schemas in custom languages and them compile them
+to GP libraries instead of defining them in their *native* type and compiling them to
+a custom schema language? 
+
+This approach adds complexity, as we need to add support for bidirectional code 
+generation, but it seems to do a better job of allocating single 
+responsibility. It's the typesafe APIs job to:
+
+1. Tell the client what type of resources it exposes.
+2. Transport resources to and from the server.
+
+This doesn't mean it's the APIs job to *define the resources themselves*. Why don't 
+we do that in the microservice code itself, where the majority of the core logic lives?
+
+This is the approach I'd like to try with the ontology, where it essentially serves 
+as an internal API between different services. Resources should *not* be defined in 
+the ontology, but in the providers that interact with it.
+
+This approach may have unforeseen pitfalls. I guess we'll find out.
 
 
 
