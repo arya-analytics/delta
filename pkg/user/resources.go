@@ -7,8 +7,8 @@ import (
 
 const ResourceType = "user"
 
-func ResourceKey(key uuid.UUID) ontology.Key {
-	return ontology.Key{Type: ResourceType, Key: key.String()}
+func ResourceKey(key uuid.UUID) ontology.ID {
+	return ontology.ID{Type: ResourceType, Key: key.String()}
 }
 
 type ResourceProvider struct {

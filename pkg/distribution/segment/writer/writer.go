@@ -48,7 +48,7 @@ func New(
 		return nil, err
 	}
 
-	// Next we determine the IDs of all the target nodes we need to write to.
+	// TraverseTo we determine the IDs of all the target nodes we need to write to.
 	batch := proxy.NewBatchFactory[channel.Key](resolver.HostID()).Batch(keys)
 
 	var (

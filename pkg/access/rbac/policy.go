@@ -6,13 +6,13 @@ import (
 )
 
 type Policy struct {
-	Subject ontology.Key
-	Object  ontology.Key
+	Subject ontology.ID
+	Object  ontology.ID
 	Actions []access.Action
 	Effect  Effect
 }
 
-func NewPolicyKey(subject, object ontology.Key) string {
+func NewPolicyKey(subject, object ontology.ID) string {
 	return subject.String() + "-" + object.String()
 }
 

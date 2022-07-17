@@ -10,7 +10,7 @@ import (
 // StaticMiddleware is a middleware whose action and object access parameters can
 // be described at runtime as opposed to request time.
 func StaticMiddleware(
-	object ontology.Key,
+	object ontology.ID,
 	action access.Action,
 	enforcer access.Enforcer,
 ) fiber.Handler {

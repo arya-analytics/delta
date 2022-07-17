@@ -3,8 +3,8 @@ package access
 import "github.com/arya-analytics/delta/pkg/ontology"
 
 type Request struct {
-	Subject ontology.Key
-	Object  ontology.Key
+	Subject ontology.ID
+	Object  ontology.ID
 	Action  Action
 }
 

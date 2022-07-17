@@ -94,7 +94,7 @@ func New(
 		return nil, err
 	}
 
-	// Next we determine IDs of all the target nodes we need to open iterators on.
+	// TraverseTo we determine IDs of all the target nodes we need to open iterators on.
 	batch := proxy.NewBatchFactory[channel.Key](resolver.HostID()).Batch(keys)
 
 	var (

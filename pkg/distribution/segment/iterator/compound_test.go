@@ -162,7 +162,7 @@ var _ = Describe("Compound", Ordered, func() {
 				)).To(Succeed())
 			})
 		})
-		Describe("SeekFirst + Next", func() {
+		Describe("SeekFirst + TraverseTo", func() {
 			It("Should return the first segment in the iterator", func() {
 				Expect(iter.SeekFirst()).To(BeTrue())
 				Expect(iter.Next()).To(BeTrue())
