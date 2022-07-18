@@ -1,12 +1,8 @@
 package ontology
 
-import (
-	"github.com/arya-analytics/x/gorp"
-)
-
 type Service interface {
 	Schema() *Schema
-	Retrieve(txn gorp.Txn, key string) (Entity, error)
+	RetrieveEntity(key string) (Entity, error)
 }
 
 type services map[Type]Service
@@ -19,10 +15,10 @@ func (s services) Register(svc Service) {
 	s[t] = svc
 }
 
-func (s services) Retrieve(txn gorp.Txn, key ID) (Entity, error) {
+func (s services) RetrieveEntity(key ID) (Entity, error) {
 	svc, ok := s[key.Type]
 	if !ok {
 		panic("[ontology] - service not found")
 	}
-	return svc.Retrieve(txn, key.Key)
+	return svc.RetrieveEntity(key.Key)
 }

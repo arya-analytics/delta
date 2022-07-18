@@ -109,7 +109,7 @@ func (r retrieve) exec(q Retrieve) error {
 		entries := gorp.GetEntries[ID, Resource](clause)
 		resources := entries.All()
 		for i, res := range resources {
-			data, err := r.services.Retrieve(q.txn, res.ID)
+			data, err := r.services.RetrieveEntity(res.ID)
 			if err != nil {
 				return err
 			}

@@ -9,5 +9,5 @@ type Request struct {
 }
 
 type Enforcer interface {
-	Enforce(requests ...Request) error
+	Enforce(req Request) error
 }

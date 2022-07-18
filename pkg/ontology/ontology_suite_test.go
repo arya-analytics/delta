@@ -28,7 +28,7 @@ func (s *emptyService) Schema() *ontology.Schema {
 	}
 }
 
-func (s *emptyService) Retrieve(txn gorp.Txn, key string) (ontology.Entity, error) {
+func (s *emptyService) RetrieveEntity(key string) (ontology.Entity, error) {
 	e := schema.NewEntity(s.Schema())
 	schema.Set(e, "key", key)
 	return e, nil

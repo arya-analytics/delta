@@ -4,4 +4,7 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-var Forbidden = errors.New("[access] - forbidden")
+var (
+	Denied        = errors.New("[access] - forbidden")
+	Granted error = nil
+)

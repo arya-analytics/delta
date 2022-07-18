@@ -24,7 +24,7 @@ func StaticMiddleware(
 			Object:  object,
 			Action:  action,
 		})
-		if errors.Is(err, access.Forbidden) {
+		if errors.Is(err, access.Denied) {
 			c.Status(fiber.StatusForbidden)
 			return err
 		}

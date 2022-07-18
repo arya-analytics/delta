@@ -23,7 +23,7 @@ func TokenMiddleware(svc *token.Service) fiber.Handler {
 		if err != nil {
 			return err
 		}
-		fiberaccess.SetSubject(c, user.ResourceKey(key))
+		fiberaccess.SetSubject(c, user.OntologyID(key))
 		return c.Next()
 	}
 }
