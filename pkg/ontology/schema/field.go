@@ -1,5 +1,7 @@
 package schema
 
+import "github.com/google/uuid"
+
 type FieldType uint8
 
 func (f FieldType) AssertValue(v interface{}) bool {
@@ -30,6 +32,8 @@ func (f FieldType) AssertValue(v interface{}) bool {
 		return assertValueType[float64](v)
 	case Bool:
 		return assertValueType[bool](v)
+	case UUID:
+		return assertValueType[uuid.UUID](v)
 	default:
 		panic("[FieldType]")
 	}
@@ -49,6 +53,7 @@ const (
 	Float32
 	Float64
 	Bool
+	UUID
 )
 
 type Value interface {
@@ -64,7 +69,8 @@ type Value interface {
 		uint64 |
 		float32 |
 		float64 |
-		bool
+		bool |
+		uuid.UUID
 }
 
 func assertValueType[V Value](v interface{}) bool { _, ok := v.(V); return ok }

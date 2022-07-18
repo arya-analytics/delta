@@ -12,10 +12,10 @@ func OntologyID(key uuid.UUID) ontology.ID {
 	return ontology.ID{Type: ontologyType, Key: key.String()}
 }
 
-var userSchema = &ontology.Schema{
+var _schema = &ontology.Schema{
 	Type: ontologyType,
 	Fields: map[string]schema.Field{
-		"key":      {Type: schema.String},
+		"key":      {Type: schema.UUID},
 		"username": {Type: schema.String},
 	},
 }
@@ -23,7 +23,7 @@ var userSchema = &ontology.Schema{
 var _ ontology.Service = (*Service)(nil)
 
 // Schema implements the ontology.Service interface.
-func (s *Service) Schema() *schema.Schema { return userSchema }
+func (s *Service) Schema() *schema.Schema { return _schema }
 
 // RetrieveEntity implements the ontology.Service interface.
 func (s *Service) RetrieveEntity(key string) (schema.Entity, error) {
@@ -36,7 +36,7 @@ func (s *Service) RetrieveEntity(key string) (schema.Entity, error) {
 }
 
 func newEntity(u User) schema.Entity {
-	e := schema.NewEntity(userSchema)
+	e := schema.NewEntity(_schema)
 	schema.Set(e, "key", u.Key.String())
 	schema.Set(e, "username", u.Username)
 	return e

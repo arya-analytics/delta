@@ -48,7 +48,7 @@ func (c Key) Lease() aspen.NodeID { return c.NodeID() }
 func (c Key) String() string { return string(c[:]) }
 
 func ResourceTypeKey(k Key) ontology.ID {
-	return ontology.ID{Type: ResourceType, Key: k.String()}
+	return ontology.ID{Type: ontologyType, Key: k.String()}
 }
 
 type Keys []Key
