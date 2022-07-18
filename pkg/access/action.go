@@ -2,4 +2,4 @@ package access
 
 type Action string
 
-const ActionIrrelivant Action = "irrelivant"
+const AllActions Action = "all"

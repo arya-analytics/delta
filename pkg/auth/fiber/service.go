@@ -28,7 +28,7 @@ func (s *Service) BindTo(parent fiber.Router) {
 	protected.Use(TokenMiddleware(s.Token))
 	protected.Use(fiberaccess.StaticMiddleware(
 		ontology.RouteKey("/auth/protected"),
-		access.ActionIrrelivant,
+		access.AllActions,
 		s.Enforcer,
 	))
 	protected.Post("/change-password", s.changePassword)

@@ -31,8 +31,8 @@ func (s *Service) Create(txn gorp.Txn, u *User) error {
 	if u.Key == uuid.Nil {
 		u.Key = uuid.New()
 	}
-	if err := s.resources.NewWriter(txn).DefineResource(OntologyID(u.
-		Key)); err != nil {
+	if err := s.resources.NewWriter(txn).
+		DefineResource(OntologyID(u.Key)); err != nil {
 		return err
 	}
 	return gorp.NewCreate[uuid.UUID, User]().Entry(u).Exec(txn)
