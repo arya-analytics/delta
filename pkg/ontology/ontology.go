@@ -12,17 +12,20 @@ type (
 )
 
 type Ontology struct {
-	services services
 	db       *gorp.DB
+	retrieve retrieve
 }
 
 // Open opens the ontology stored in the given database.
 func Open(db *gorp.DB) (*Ontology, error) {
-	s := &Ontology{services: make(services), db: db}
-	if err := s.NewWriter(db).DefineResource(Root); err != nil {
+	o := &Ontology{
+		db:       db,
+		retrieve: retrieve{services: make(services)},
+	}
+	if err := o.NewWriter(db).DefineResource(Root); err != nil {
 		return nil, err
 	}
-	return s, nil
+	return o, nil
 }
 
 type Writer interface {
@@ -45,8 +48,12 @@ type Writer interface {
 }
 
 // NewRetrieve opens a new Retrieve query, which is used to traverse the ontology.
-func (s *Ontology) NewRetrieve() Retrieve { return newRetrieve(s.db) }
+func (o *Ontology) NewRetrieve() Retrieve { return newRetrieve(o.db, o.retrieve.exec) }
 
 // NewWriter opens a new Writer using the provided transaction. NewWriter will panic
 // if the transaction does not root from the same database as the Ontology.
-func (s *Ontology) NewWriter(txn gorp.Txn) Writer { return dagWriter{Txn: txn} }
+func (o *Ontology) NewWriter(txn gorp.Txn) Writer { return dagWriter{txn: txn, retrieve: o.retrieve} }
+
+func (o *Ontology) RegisterService(s Service) {
+	o.retrieve.services.Register(s)
+}

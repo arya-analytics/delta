@@ -7,11 +7,16 @@ import (
 
 type Retrieve struct {
 	txn   gorp.Txn
+	exec  func(r Retrieve) error
 	query *gorp.Compound[ID, Resource]
 }
 
-func newRetrieve(txn gorp.Txn) Retrieve {
-	r := Retrieve{txn: txn, query: &gorp.Compound[ID, Resource]{}}
+func newRetrieve(txn gorp.Txn, exec func(r Retrieve) error) Retrieve {
+	r := Retrieve{
+		txn:   txn,
+		query: &gorp.Compound[ID, Resource]{},
+		exec:  exec,
+	}
 	r.query.Next()
 	return r
 }
@@ -76,56 +81,73 @@ func (r Retrieve) Entries(res *[]Resource) Retrieve {
 	return r
 }
 
-func (r Retrieve) Exec() error { return retrieve{txn: r.txn}.exec(r) }
+func (r Retrieve) Exec() error { return r.exec(r) }
 
 const traverseOptKey = "traverse"
 
-func setTraverser(q query.Query, f Traverser) { q.Set(traverseOptKey, f) }
+func setTraverser(q query.Query, f Traverser) {
+	q.Set(traverseOptKey, f)
+}
 
-func getTraverser(q query.Query) Traverser { return q.GetRequired(traverseOptKey).(Traverser) }
+func getTraverser(q query.Query) Traverser {
+	return q.GetRequired(traverseOptKey).(Traverser)
+}
 
-type retrieve struct{ txn gorp.Txn }
+type retrieve struct {
+	services services
+}
 
 func (r retrieve) exec(q Retrieve) error {
 	var nextIDs []ID
-	for i, step := range q.query.Clauses {
+	for i, clause := range q.query.Clauses {
 		if i != 0 {
-			step.WhereKeys(nextIDs...)
+			clause.WhereKeys(nextIDs...)
 		}
-		nextIDs = nil
-		if err := step.Exec(r.txn); err != nil {
+		if err := clause.Exec(q.txn); err != nil {
 			return err
 		}
-		resources := gorp.GetEntries[ID, Resource](step).All()
+		entries := gorp.GetEntries[ID, Resource](clause)
+		resources := entries.All()
+		for i, res := range resources {
+			data, err := r.services.Retrieve(q.txn, res.ID)
+			if err != nil {
+				return err
+			}
+			res.entity = data
+			entries.Set(i, res)
+		}
 		if len(resources) == 0 {
 			break
 		}
-		atLastClause := len(q.query.Clauses) == i+1
-		if atLastClause {
+		if atLast := len(q.query.Clauses) == i+1; atLast {
 			return nil
 		}
 		var err error
-		if nextIDs, err = r.traverse(getTraverser(step), resources); err != nil {
+		if nextIDs, err = r.traverse(q.txn, getTraverser(clause), resources); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (r retrieve) traverse(traverse Traverser, resources []Resource) ([]ID, error) {
+func (r retrieve) traverse(
+	txn gorp.Txn,
+	traverse Traverser,
+	resources []Resource,
+) ([]ID, error) {
 	var nextIDs []ID
-	return nextIDs, gorp.NewRetrieve[string, Relationship]().Where(func(
-		rel *Relationship) bool {
-		for _, resource := range resources {
-			if traverse.Filter(&resource, rel) {
-				if traverse.Direction == Forward {
-					nextIDs = append(nextIDs, rel.To)
-				} else {
-					nextIDs = append(nextIDs, rel.From)
+	return nextIDs, gorp.NewRetrieve[string, Relationship]().
+		Where(func(rel *Relationship) bool {
+			for _, resource := range resources {
+				if traverse.Filter(&resource, rel) {
+					if traverse.Direction == Forward {
+						nextIDs = append(nextIDs, rel.To)
+					} else {
+						nextIDs = append(nextIDs, rel.From)
+					}
+					break
 				}
-				break
 			}
-		}
-		return false
-	}).Exec(r.txn)
+			return false
+		}).Exec(txn)
 }

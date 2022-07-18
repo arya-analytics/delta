@@ -27,3 +27,10 @@ func Set[V Value](D Entity, k string, v V) {
 	}
 	D.data[k] = v
 }
+
+func NewEntity(schema *Schema) Entity {
+	return Entity{
+		schema: schema,
+		data:   map[string]interface{}{},
+	}
+}

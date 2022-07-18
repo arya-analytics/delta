@@ -15,7 +15,7 @@ var _ = Describe("Writer", func() {
 	)
 	BeforeEach(func() {
 		w = otg.NewWriter(txn)
-		id = ontology.ID{Key: "foo", Type: "bar"}
+		id = newEmptyID("foo")
 	})
 	Describe("Resources", func() {
 		Describe("Defining a Resource", func() {
@@ -44,8 +44,8 @@ var _ = Describe("Writer", func() {
 	Describe("Relationships", func() {
 		var idOne, idTwo ontology.ID
 		BeforeEach(func() {
-			idOne = ontology.ID{Key: "foo", Type: "bar"}
-			idTwo = ontology.ID{Key: "baz", Type: "qux"}
+			idOne = newEmptyID("foo")
+			idTwo = newEmptyID("bar")
 			Expect(w.DefineResource(idOne)).To(Succeed())
 			Expect(w.DefineResource(idTwo)).To(Succeed())
 		})
@@ -69,10 +69,7 @@ var _ = Describe("Writer", func() {
 				It("Should return a query.NotFound error", func() {
 					err := w.DefineRelationship(
 						idOne,
-						ontology.ID{
-							Key:  "42",
-							Type: "97",
-						},
+						newEmptyID("42"),
 						ontology.Parent,
 					)
 					Expect(err).To(HaveOccurred())

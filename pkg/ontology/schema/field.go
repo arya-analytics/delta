@@ -70,6 +70,5 @@ type Value interface {
 func assertValueType[V Value](v interface{}) bool { _, ok := v.(V); return ok }
 
 type Field struct {
-	Name string
 	Type FieldType
 }

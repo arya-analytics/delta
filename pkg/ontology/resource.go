@@ -2,7 +2,6 @@ package ontology
 
 import (
 	"fmt"
-	"github.com/arya-analytics/delta/pkg/ontology/schema"
 )
 
 // ID is a unique identifier for a Resource. An example:
@@ -40,8 +39,8 @@ func (k ID) String() string {
 }
 
 type Resource struct {
-	ID   ID
-	data schema.Entity
+	ID     ID
+	entity Entity
 }
 
 // GorpKey implements the gorp.Entry interface.
@@ -49,3 +48,5 @@ func (r Resource) GorpKey() ID { return r.ID }
 
 // SetOptions implements the gorp.Entry interface.
 func (r Resource) SetOptions() []interface{} { return nil }
+
+func (r Resource) Entity() Entity { return r.entity }
