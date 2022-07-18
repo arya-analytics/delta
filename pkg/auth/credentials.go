@@ -1,6 +1,8 @@
 package auth
 
-import "github.com/arya-analytics/delta/pkg/password"
+import (
+	"github.com/arya-analytics/delta/pkg/auth/password"
+)
 
 // InsecureCredentials is a set of unencrypted credentials. These are used to
 // authenticate an entity (user, client, etc.). These credentials are NOT safe to store

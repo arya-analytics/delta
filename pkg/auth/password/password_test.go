@@ -1,7 +1,7 @@
 package password_test
 
 import (
-	"github.com/arya-analytics/delta/pkg/password"
+	"github.com/arya-analytics/delta/pkg/auth/password"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

@@ -4,7 +4,7 @@ import (
 	"github.com/arya-analytics/aspen"
 	"github.com/arya-analytics/delta/pkg/distribution/channel"
 	"github.com/arya-analytics/delta/pkg/distribution/node"
-	"github.com/arya-analytics/delta/pkg/proxy"
+	"github.com/arya-analytics/delta/pkg/distribution/proxy"
 	"github.com/arya-analytics/x/address"
 	"github.com/arya-analytics/x/confluence/transfluence"
 	"github.com/arya-analytics/x/signal"

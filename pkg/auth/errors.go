@@ -1,7 +1,7 @@
 package auth
 
 import (
-	"github.com/arya-analytics/delta/pkg/password"
+	"github.com/arya-analytics/delta/pkg/auth/password"
 	"github.com/cockroachdb/errors"
 )
 
