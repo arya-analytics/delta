@@ -40,12 +40,12 @@ func (k ID) String() string {
 }
 
 type Resource struct {
-	Key  ID
+	ID   ID
 	data schema.Entity
 }
 
 // GorpKey implements the gorp.Entry interface.
-func (r Resource) GorpKey() ID { return r.Key }
+func (r Resource) GorpKey() ID { return r.ID }
 
 // SetOptions implements the gorp.Entry interface.
 func (r Resource) SetOptions() []interface{} { return nil }

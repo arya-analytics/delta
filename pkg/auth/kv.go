@@ -8,7 +8,7 @@ import (
 )
 
 // KV is a simple key-value backed Authenticator. It saves data to the provided
-// gorp DB. It's important to note that all gorp.DB(s) provided to the Authenticator
+// gorp DB. It's important to note that all gorp.Txn(s) provided to the Authenticator
 // interface must be spawned from the same gorp DB.
 type KV struct{ DB *gorp.DB }
 
