@@ -63,7 +63,7 @@ var _ = Describe("Create", Ordered, func() {
 				Expect(ch.Key().NodeID()).To(Equal(aspen.NodeID(1)))
 				Expect(ch.Key().Cesium()).To(Equal(cesium.ChannelKey(1)))
 			})
-			It("Should create the channel in the cesium DB", func() {
+			It("Should create the channel in the cesium gorpDB", func() {
 				channels, err := builder.Stores[1].Cesium.RetrieveChannel(ch.Key().Cesium())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(channels).To(HaveLen(1))
@@ -79,7 +79,7 @@ var _ = Describe("Create", Ordered, func() {
 				Expect(ch.Key().NodeID()).To(Equal(aspen.NodeID(2)))
 				Expect(ch.Key().Cesium()).To(Equal(cesium.ChannelKey(1)))
 			})
-			It("Should create the channel in the cesium DB", func() {
+			It("Should create the channel in the cesium gorpDB", func() {
 				channels, err := builder.Stores[2].Cesium.RetrieveChannel(ch.Key().Cesium())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(channels).To(HaveLen(1))
@@ -88,7 +88,7 @@ var _ = Describe("Create", Ordered, func() {
 				Expect(cesiumCH.DataType).To(Equal(telem.Float64))
 				Expect(cesiumCH.DataRate).To(Equal(5 * telem.Hz))
 			})
-			It("Should not create the channel on another node's ceisum DB", func() {
+			It("Should not create the channel on another node's ceisum gorpDB", func() {
 				channels, err := builder.Stores[1].Cesium.RetrieveChannel(ch.Key().Cesium())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(channels).To(HaveLen(0))

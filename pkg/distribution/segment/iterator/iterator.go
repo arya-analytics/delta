@@ -5,8 +5,8 @@ import (
 	"github.com/arya-analytics/aspen"
 	"github.com/arya-analytics/cesium"
 	"github.com/arya-analytics/delta/pkg/distribution/channel"
+	"github.com/arya-analytics/delta/pkg/distribution/proxy"
 	"github.com/arya-analytics/delta/pkg/distribution/segment/core"
-	"github.com/arya-analytics/delta/pkg/proxy"
 	"github.com/arya-analytics/x/address"
 	"github.com/arya-analytics/x/confluence"
 	"github.com/arya-analytics/x/confluence/plumber"
@@ -94,7 +94,7 @@ func New(
 		return nil, err
 	}
 
-	// Next we determine IDs of all the target nodes we need to open iterators on.
+	// TraverseTo we determine IDs of all the target nodes we need to open iterators on.
 	batch := proxy.NewBatchFactory[channel.Key](resolver.HostID()).Batch(keys)
 
 	var (
