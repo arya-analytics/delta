@@ -10,7 +10,7 @@ Issue**: [DA-185 - Data Ontology](https://arya-analytics.atlassian.net/browse/DA
 # Summary
 
 In this RFC I propose a design for a data ontology that can be used to define and
-query the relationships across delta's various services. The architectural objective
+query the relationships across Delta's various services. The architectural objective
 is to separate the core algorithms operating on the data structures in a particular
 service (segment iteration, channel command streaming, etc.) from the relationships
 those data structures may have with other entities in the system.
@@ -26,8 +26,8 @@ Let's say we want to block a user from writing segments to a particular channel.
 can naively approach the problem by binding a permission object to the user
 stating what channels they have access to, and then add a gate somewhere in our segment
 write pipeline that checks whether the user can perform the action. The fault in this  
-design is that *validating the permissions of a user is not core to the algorithms
-for writing segments to a channel*. By adding explicit permission checks to the
+design is that validating the permissions of a user is *not* core to the algorithms
+for writing segments to a channel. By adding explicit permission checks to the
 pipeline, we expand the scope of the segment writer beyond a single responsibility.
 
 This problem appears in the user service as well. By adding explicit permission fields
@@ -66,12 +66,11 @@ The need to establish abstract relationships extends beyond authorization scheme
 ## Overview
 
 At its core, the ontology is represented by a directed, acyclic graph or
-[DAG](https://en.wikipedia.org/wiki/Directed_acyclic_graph) (I'll address why I'm
-using this specific graph in a moment). This graph is composed of vertexes and edges.
+[DAG](https://en.wikipedia.org/wiki/Directed_acyclic_graph). This graph is composed of vertexes and edges.
 Vertexes represent particular resources in the cluster (channel, user, node, group,
 device, etc). The edges between vertexes represent a relationship between them.
 
-A caller can traverse the graph by following the parents and children of a vertex.
+A caller can traverse the graph by following the relationships of a vertex.
 They can also define new vertexes and edges, and assign properties to them (such as
 permissions).
 
@@ -120,7 +119,7 @@ the callers needs.
 
 It's also important to note that although this graph has undirected cycles, it does
 not have any directed cycles. If we were to introduce a directed cycle like the
-following
+following,
 
 
 <p align="middle">
@@ -167,20 +166,23 @@ A relationship, or edge on the DAG, is a directed relationship between two resou
 ```go
 package ontology
 
+type RelationshipType string
+
 type Relationship struct {
-	Parent ID
-	Child  ID
+	From ID
+	To   ID
+	// Distinguishes different classes of relationships, such as parent-child, accessor
+	// -accessed, etc.
+	Type RelationshipType
 }
 ```
 
-Instead of using the terms 'to' and 'from', I chose 'parent' and 'child' as they
-delineate a hierarchy as opposed to a simple direction. A child is a subcomponent of
-its parent, and a parent is an aggregate of its children.
+The `ontology` package provides a builtin `ChildOf` relationship type that indicates that `From` is the child of `To`.
 
 ## Services
 
-If the ontology's DAG only stores references, where do we actually get resources? 
-This is where a service comes in. A service for a particular resource type serves 
+If the ontology's DAG only stores references, where do we actually get resources?
+This is where a service comes in. A service for a particular resource type serves
 as a gateway to the underlying service where the resource is stored.
 
 The MVP interface for a service is decidedly simple:
@@ -205,11 +207,12 @@ The process for retrieving resource data is as follows:
 
 1. A caller traverses the DAG until they find a resource of interest.
 2. The ontology does a key-value lookup for the appropriate service.
-3. The service retrieve the data for the resource, and binds it to the `ontology.Resource`
-from the DAG.
+3. The service retrieve the data for the resource, and binds it to
+   the `ontology.Resource`
+   from the DAG.
 4. The `ontology.Resource` is returned to the caller.
 
-I've had quite a bit of trouble defining a good way to integrate resource data into 
+I've had quite a bit of trouble defining a good way to integrate resource data into
 the `Resource`. On the one hand, I'd like the `ontology` package to have as little
 knowledge and interaction with the concrete type as possible. On the other hand, I'm not
 a fan of highly dynamic, untyped interfaces. The simplest, and most abstracted way to
@@ -229,11 +232,11 @@ type Resource struct {
 If we're exposing the resource through an API, we can serialize the Data to JSON and
 return it to the client, where they can parse the fields as they wish.
 
-This approach is extremely general and loosely coupled, but poses problems when the 
-caller wants to parse the data. This can be illustrated when attempting to implement an 
-ABAC authorization system. When defining a policy, how do we extract specific 
-attributes from the resource? For example, we may allow or deny access to a channel 
-depending on its `Channel.NodeID` field. The only way to access this field is 
+This approach is general and loosely coupled, but poses problems when the
+caller wants to parse the data. This can be illustrated when attempting to implement an
+ABAC authorization system. When defining a policy, how do we extract specific
+attributes from the resource? For example, we may allow or deny access to a channel
+depending on its `Channel.NodeID` field. The only way to access this field is
 through reflection, which I'd like to avoid.
 
 ### String-Value Maps
@@ -247,7 +250,7 @@ package ontology
 type Data map[string]interface{}
 
 type Service interface {
-    Retrieve(ID) (Data, error)
+	Retrieve(ID) (Data, error)
 }
 type Resource struct {
 	ID   ID
@@ -255,7 +258,7 @@ type Resource struct {
 }
 ```
 
-This is marginally less abstract, but definitely more sustainable. Now we can use 
+This is marginally less abstract, but definitely more sustainable. Now we can use
 key-access in our ABAC policies:
 
 ```go
@@ -265,34 +268,34 @@ package ontology
 func Enforce(resource Resource) error {
 	if resource.Type != "channel" {
 		return errors.New("access DENIED")
-    }
+	}
 	nodeID, ok := resource.Data["nodeID"]
 	if !ok {
 		return errors.New("probably a bug")
-    }
+	}
 	if nodeID != 42 {
 		return errors.New("access DENIED")
-    }
+	}
 	return nil
 }
 ```
 
 This is similar to the `fiber.Ctx.Locals()` implementation, where
 we can set arbitrary key-value pairs and get them later. While it works, the idea
-of turning a struct into a map makes me fee a bit woozy (kind of like injecting a 
+of turning a struct into a map makes me fee a bit woozy (kind of like injecting a
 bunch of random variables into a context).
 
 ### Looking to GraphQL for Inspiration
 
-In many ways, the ontology serves a similar purpose to a GraphQL wrapper around a 
+In many ways, the ontology serves a similar purpose to a GraphQL wrapper around a
 set of microservices. Of course, the ontology can also be used as an internal bus for
-communicating data within the codebase itself. 
+communicating data within the codebase itself.
 
-GraphQL defines its resources using a Schema, where the properties (names, types, 
+GraphQL defines its resources using a Schema, where the properties (names, types,
 validation rules, etc. ) are defined for each resource type. A user writes a collection
 of schemas, and then uses them to query the API.
 
-We can take a similar approach by extending the `Service` interface to ask for a schema 
+We can take a similar approach by extending the `Service` interface to ask for a schema
 definition along with its data.
 
 ```
@@ -303,86 +306,58 @@ type Service interface {
 }
 ```
 
-This could be particularly useful if we want to support resources writes through the 
-ontology, and could eventually allow for the creation of typesafe APIs. 
+This could be particularly useful if we want to support resources writes through the
+ontology, and could eventually allow for the creation of typesafe APIs.
 
 ### (Mild) Digression - Thinking Architecturally
 
-I'd like to make note of an important distinction between a GraphQL interface and the 
+I'd like to make note of an important distinction between a GraphQL interface and the
 schema concept I introduced above. Many typesafe APIs (GraphQL, gRPC, tRPC, Swagger)
-rely on custom languages to define their resources. These languages can then 
-generate code that can be imported and implemented into your general purpose 
-language of choice. 
+rely on custom languages to define their resources. These languages can then
+generate code that can be imported and implemented into your general purpose
+language of choice.
 
-If we're talking about using a typesafe API to communicate between two microservices 
-A and B, where A stores the resource (the 'server') and B queries it (the 'client'), I 
-think it's important to ask *who is responsible for defining the API?*. 
+If we're talking about using a typesafe API to communicate between two microservices
+A and B, where A stores the resource (the 'server') and B queries it (the 'client'), I
+think it's important to ask *who is responsible for defining the API?*.
 
-Unless the server is specifically designed to support arbitrary data types and 
-relationships (like a database), I think it's prudent to assume the server is 
-responsible for letting the client know which resources it exposes. This establishes 
-a clear contract with a single source of truth. 
+Unless the server is specifically designed to support arbitrary data types and
+relationships (like a database), I think it's prudent to assume the server is
+responsible for letting the client know which resources it exposes. This establishes
+a clear contract with a single source of truth.
 
 This leads me to ask why we define our schemas in custom languages and them compile them
 to GP libraries instead of defining them in their *native* type and compiling them to
-a custom schema language? 
+a custom schema language?
 
-This approach adds complexity, as we need to add support for bidirectional code 
-generation, but it seems to do a better job of allocating single 
+This approach adds complexity, as we need to add support for bidirectional code
+generation, but it seems to do a better job of allocating single
 responsibility. It's the typesafe APIs job to:
 
 1. Tell the client what type of resources it exposes.
 2. Transport resources to and from the server.
 
-This doesn't mean it's the APIs job to *define the resources themselves*. Why don't 
+This doesn't mean it's the APIs job to *define the resources themselves*. Why don't
 we do that in the microservice code itself, where the majority of the core logic lives?
 
-This is the approach I'd like to try with the ontology, where it essentially serves 
-as an internal API between different services. Resources should *not* be defined in 
+This is the approach I'd like to try with the ontology, where it essentially serves
+as an internal API between different services. Resources should *not* be defined in
 the ontology, but in the services that interact with it.
 
 This approach may have unforeseen pitfalls. I guess we'll find out.
 
+## Future Work
 
+### Writes through the Ontology
 
+Right now, we're only able to read resource data from the ontology. I think its 
+pertinent to consider whether we'd like to add support for writing to resources in 
+the future. 
 
+On the one hand, this transfers more responsibility onto the ontology for managing 
+resource data. On the other hand, we've already established strongly typed schemas, and
+could use them to automatically create typesafe write APIs so that services don't have
+to implement their own.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+We won't know until we've put the existing design through its paces, so I'll lease this
+as an open question. 
