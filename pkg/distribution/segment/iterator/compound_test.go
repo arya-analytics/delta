@@ -57,7 +57,7 @@ var _ = Describe("Compound", Ordered, func() {
 		builder = mock.NewStorage()
 		dataFactory := &seg.RandomFloat64Factory{Cache: true}
 		net = tmock.NewNetwork[iterator.Request, iterator.Response]()
-		channelNet := tmock.NewNetwork[channel.CreateMessage, channel.CreateMessage]()
+		channelNet := tmock.NewNetwork[channel.CreateRequest, channel.CreateRequest]()
 
 		node1Addr := address.Address("localhost:0")
 		node2Addr := address.Address("localhost:1")

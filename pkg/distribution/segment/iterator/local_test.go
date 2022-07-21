@@ -27,7 +27,7 @@ var _ = Describe("Local", Ordered, func() {
 
 		net = tmock.NewNetwork[iterator.Request, iterator.Response]()
 
-		channelNet := tmock.NewNetwork[channel.CreateMessage, channel.CreateMessage]()
+		channelNet := tmock.NewNetwork[channel.CreateRequest, channel.CreateRequest]()
 
 		store1, err := builder.New(log)
 		Expect(err).ToNot(HaveOccurred())

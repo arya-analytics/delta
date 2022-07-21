@@ -32,6 +32,18 @@ func ParseKey(s string) (k Key, err error) {
 	return k, nil
 }
 
+func ParseKeys(keys []string) (Keys, error) {
+	var err error
+	k := make(Keys, len(keys))
+	for i, key := range keys {
+		k[i], err = ParseKey(key)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return k, nil
+}
+
 // NodeID returns the id of the node embedded in the key. This node is the leaseholder
 // node for the Channel.
 func (c Key) NodeID() aspen.NodeID { return aspen.NodeID(binary.LittleEndian.Uint32(c[0:4])) }
@@ -77,6 +89,14 @@ func (k Keys) Nodes() (ids []node.ID) {
 		}
 	}
 	return ids
+}
+
+func (k Keys) Strings() []string {
+	s := make([]string, len(k))
+	for i, key := range k {
+		s[i] = key.String()
+	}
+	return s
 }
 
 type Channel struct {

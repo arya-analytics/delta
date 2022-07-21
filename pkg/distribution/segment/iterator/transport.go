@@ -49,8 +49,8 @@ type Response struct {
 	NodeID   node.ID
 	Ack      bool
 	Command  Command
-	Segments []core.Segment
 	Error    error
+	Segments []core.Segment
 }
 
 func newAck(host node.ID, cmd Command, ok bool) Response {

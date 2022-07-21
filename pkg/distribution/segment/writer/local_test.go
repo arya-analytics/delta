@@ -35,7 +35,7 @@ var _ = Describe("Local", Ordered, func() {
 
 		net = tmock.NewNetwork[writer.Request, writer.Response]()
 
-		channelNet := tmock.NewNetwork[channel.CreateMessage, channel.CreateMessage]()
+		channelNet := tmock.NewNetwork[channel.CreateRequest, channel.CreateRequest]()
 
 		store1, err := builder.New(log)
 		Expect(err).ToNot(HaveOccurred())
@@ -56,7 +56,7 @@ var _ = Describe("Local", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 		factory = seg.NewSequentialFactory(dataFactory, 10*telem.Second, channels[0].Cesium)
 		wrapper = &core.CesiumWrapper{KeyMap: map[cesium.ChannelKey]channel.
-		Key{channels[0].Cesium.Key: channels[0].Key()}}
+			Key{channels[0].Cesium.Key: channels[0].Key()}}
 
 		keys = channel.Keys{channels[0].Key()}
 

@@ -2,8 +2,8 @@ package channel
 
 import "github.com/arya-analytics/x/transport"
 
-type CreateTransport = transport.Unary[CreateMessage, CreateMessage]
+type CreateTransport = transport.Unary[CreateRequest, CreateRequest]
 
-type CreateMessage struct {
+type CreateRequest struct {
 	Channels []Channel
 }

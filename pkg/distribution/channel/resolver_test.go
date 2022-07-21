@@ -20,7 +20,7 @@ var _ = Describe("Resolver", Ordered, func() {
 	)
 	BeforeAll(func() {
 		log := zap.NewNop()
-		net := tmock.NewNetwork[channel.CreateMessage, channel.CreateMessage]()
+		net := tmock.NewNetwork[channel.CreateRequest, channel.CreateRequest]()
 		builder = mock.NewStorage()
 		store1, err := builder.New(log)
 		Expect(err).To(BeNil())

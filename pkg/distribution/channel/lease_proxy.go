@@ -36,13 +36,13 @@ func newLeaseProxy(
 	return p
 }
 
-func (lp *leaseProxy) handle(ctx context.Context, msg CreateMessage) (CreateMessage, error) {
+func (lp *leaseProxy) handle(ctx context.Context, msg CreateRequest) (CreateRequest, error) {
 	txn := lp.db.BeginTxn()
 	channels, err := lp.create(ctx, txn, msg.Channels)
 	if err != nil {
-		return CreateMessage{}, err
+		return CreateRequest{}, err
 	}
-	return CreateMessage{Channels: channels}, txn.Commit()
+	return CreateRequest{Channels: channels}, txn.Commit()
 }
 
 func (lp *leaseProxy) create(
@@ -114,7 +114,7 @@ func (lp *leaseProxy) createRemote(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	res, err := lp.transport.Send(ctx, addr, CreateMessage{Channels: channels})
+	res, err := lp.transport.Send(ctx, addr, CreateRequest{Channels: channels})
 	if err != nil {
 		return nil, err
 	}
