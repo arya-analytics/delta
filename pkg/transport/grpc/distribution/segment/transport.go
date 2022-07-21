@@ -12,6 +12,7 @@ import (
 	grpcx "github.com/arya-analytics/x/grpc"
 	"github.com/arya-analytics/x/telem"
 	"github.com/cockroachdb/errors"
+	"google.golang.org/grpc"
 )
 
 type core struct {
@@ -268,4 +269,27 @@ func (t iteratorTranslator) translateResponseBackward(
 		Error:    req.Error.Error(),
 		Segments: translateSegmentsBackward(req.Segments),
 	}
+}
+
+type transport struct {
+	server *grpc.Server
+	pool   *grpcx.Pool
+	writer *writerTransport
+	iter   *iteratorTransport
+}
+
+func (t *transport) Writer() writer.Transport { return t.writer }
+
+func (t *transport) Iterator() iterator.Transport { return t.iter }
+
+func New(server *grpc.Server, pool *grpcx.Pool) segment.Transport {
+	t := &transport{
+		pool:   pool,
+		server: server,
+		writer: &writerTransport{core: core{Pool: pool}},
+		iter:   &iteratorTransport{core: core{Pool: pool}},
+	}
+	segmentv1.RegisterWriterServiceServer(server, t.writer)
+	segmentv1.RegisterIteratorServiceServer(server, t.iter)
+	return t
 }

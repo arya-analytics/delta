@@ -1,15 +1,15 @@
-/*
-Copyright © 2022 NAME HERE <EMAIL ADDRESS>
-
-*/
 package cmd
 
 import (
 	"context"
 	"github.com/arya-analytics/aspen"
 	aspentransport "github.com/arya-analytics/aspen/transport/grpc"
+	"github.com/arya-analytics/delta/pkg/distribution/channel"
+	"github.com/arya-analytics/delta/pkg/distribution/segment"
 	"github.com/arya-analytics/delta/pkg/ontology"
 	"github.com/arya-analytics/delta/pkg/storage"
+	channeltransport "github.com/arya-analytics/delta/pkg/transport/grpc/distribution/channel"
+	segmenttransport "github.com/arya-analytics/delta/pkg/transport/grpc/distribution/segment"
 	"github.com/arya-analytics/x/address"
 	"github.com/arya-analytics/x/alamos"
 	"github.com/arya-analytics/x/gorp"
@@ -107,8 +107,20 @@ to quickly create a Cobra application.`,
 				return err
 			}
 
-			// 1. Open our channel distribution layer.
-			// 2. Open our segment distribution layer.
+			channelDistributionSvc := channel.New(
+				aspenDB,
+				gorpDB,
+				store.Cesium,
+				channeltransport.New(rpcServer, rpcPool),
+			)
+
+			segmentDistributionSvc := segment.New(
+				channelDistributionSvc,
+				store.Cesium,
+				segmenttransport.New(rpcServer, rpcPool),
+				aspenDB,
+			)
+
 			// 3. Open our access legislator and enforcer.
 			// 4. Open our authentication service.
 			// 5. Open the fiber server.

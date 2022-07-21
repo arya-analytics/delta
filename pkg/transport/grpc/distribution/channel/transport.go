@@ -10,6 +10,7 @@ import (
 	grpcx "github.com/arya-analytics/x/grpc"
 	"github.com/arya-analytics/x/telem"
 	"go/types"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -22,8 +23,13 @@ func (c core) String() string { return "grpc" }
 type transport struct {
 	channelv1.UnimplementedChannelServiceServer
 	core
-	handle func(context.Context, channel.CreateRequest)
+	handle func(context.Context, channel.CreateRequest) (types.Nil, error)
 }
+
+var (
+	_ channel.CreateTransport                     = (*transport)(nil)
+	_ channelv1.UnimplementedChannelServiceServer = (*transport)(nil)
+)
 
 func (t *transport) Send(
 	ctx context.Context,
@@ -41,7 +47,9 @@ func (t *transport) Send(
 	return types.Nil{}, err
 }
 
-func (t *transport) Handle(handle func(ctx context.Context, req channel.CreateRequest)) {
+func (t *transport) Handle(
+	handle func(context.Context, channel.CreateRequest) (types.Nil, error),
+) {
 	t.handle = handle
 }
 
@@ -49,8 +57,8 @@ func (t *transport) Create(
 	ctx context.Context,
 	req *channelv1.CreateRequest,
 ) (*emptypb.Empty, error) {
-	t.handle(ctx, t.translateForward(req))
-	return &emptypb.Empty{}, nil
+	_, err := t.handle(ctx, t.translateForward(req))
+	return &emptypb.Empty{}, err
 }
 
 func (t *transport) translateForward(
@@ -84,4 +92,12 @@ func (t *transport) translateBackward(
 		})
 	}
 	return tr
+}
+
+func New(server *grpc.Server, pool *grpcx.Pool) channel.CreateTransport {
+	t := &transport{
+		core: core{Pool: pool},
+	}
+	channelv1.RegisterChannelServiceServer(server, t)
+	return t
 }
