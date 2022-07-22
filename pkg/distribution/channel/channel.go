@@ -8,6 +8,8 @@ import (
 	"github.com/arya-analytics/delta/pkg/ontology"
 	"github.com/arya-analytics/x/filter"
 	"github.com/cockroachdb/errors"
+	"strconv"
+	"strings"
 )
 
 // Key represents a unique identifier for a Channel. This value is guaranteed to be
@@ -23,15 +25,55 @@ func NewKey(nodeID aspen.NodeID, cesiumKey cesium.ChannelKey) (key Key) {
 	return key
 }
 
-func ParseKey(s string) (k Key, err error) {
-	b := []byte(s)
-	if len(b) != len(k) {
-		return k, errors.New("[channel.ID] - invalid length")
-	}
-	copy(k[:], b)
-	return k, nil
+// NodeID returns the id of the node embedded in the key. This node is the leaseholder
+// node for the Channel.
+func (c Key) NodeID() aspen.NodeID { return aspen.NodeID(binary.LittleEndian.Uint32(c[0:4])) }
+
+// Cesium returns a unique identifier for the Channel within the leaseholder node's
+// cesium.DB. This value is NOT guaranteed to be unique across the entire cluster.
+func (c Key) Cesium() cesium.ChannelKey {
+	return cesium.ChannelKey(binary.LittleEndian.Uint16(c[4:6]))
 }
 
+// Lease implements the proxy.Entry interface.
+func (c Key) Lease() aspen.NodeID { return c.NodeID() }
+
+const strKeySep = "-"
+
+// String returns the Key as a string in the format of "NodeID-CesiumKey", so
+// a channel with a NodeID of 1 and a CesiumKey of 2 would return "1-2".
+func (c Key) String() string {
+	return strconv.Itoa(int(c.NodeID())) + strKeySep + strconv.Itoa(int(c.Cesium()))
+}
+
+// ParseKey parses a string representation of a Key into a Key. The key must be in
+// the format outlined in Key.String().
+func ParseKey(s string) (k Key, err error) {
+	split := strings.Split(s, "-")
+	if len(split) != 2 {
+		return k, errors.New("[channel] - invalid key format")
+	}
+	nodeID, err := strconv.Atoi(split[0])
+	if err != nil {
+		return k, errors.Wrapf(err, "[channel] - invalid node id")
+	}
+	cesiumKey, err := strconv.Atoi(split[1])
+	if err != nil {
+		return k, errors.Wrapf(err, "[channel] - invalid cesium key")
+	}
+	return NewKey(aspen.NodeID(nodeID), cesium.ChannelKey(cesiumKey)), nil
+}
+
+// OntologyID returns a unique identifier for a Channel for use within a resource
+// ontology.
+func OntologyID(k Key) ontology.ID {
+	return ontology.ID{Type: ontologyType, Key: k.String()}
+}
+
+// Keys extends []Key with a few convenience methods.
+type Keys []Key
+
+// ParseKeys parses a slice of strings into a slice of Keys.
 func ParseKeys(keys []string) (Keys, error) {
 	var err error
 	k := make(Keys, len(keys))
@@ -44,27 +86,7 @@ func ParseKeys(keys []string) (Keys, error) {
 	return k, nil
 }
 
-// NodeID returns the id of the node embedded in the key. This node is the leaseholder
-// node for the Channel.
-func (c Key) NodeID() aspen.NodeID { return aspen.NodeID(binary.LittleEndian.Uint32(c[0:4])) }
-
-// Cesium returns a unique identifier for the Channel within the leaseholder node's
-// cesium.DB. This value is NOT guaranteed tobe unique across the entire cluster.
-func (c Key) Cesium() cesium.ChannelKey {
-	return cesium.ChannelKey(binary.LittleEndian.Uint16(c[4:6]))
-}
-
-// Lease implements the proxy.RouteUnary interface.
-func (c Key) Lease() aspen.NodeID { return c.NodeID() }
-
-func (c Key) String() string { return string(c[:]) }
-
-func ResourceTypeKey(k Key) ontology.ID {
-	return ontology.ID{Type: ontologyType, Key: k.String()}
-}
-
-type Keys []Key
-
+// Cesium calls Key.Cesium() on each key and returns a slice with the results.
 func (k Keys) Cesium() []cesium.ChannelKey {
 	keys := make([]cesium.ChannelKey, len(k))
 	for i, key := range k {
@@ -73,16 +95,8 @@ func (k Keys) Cesium() []cesium.ChannelKey {
 	return keys
 }
 
-func (k Keys) CesiumMap() map[cesium.ChannelKey]Key {
-	m := make(map[cesium.ChannelKey]Key)
-	for _, key := range k {
-		m[key.Cesium()] = key
-	}
-	return m
-}
-
-// Nodes returns a slice of all unique node IDs of Keys.
-func (k Keys) Nodes() (ids []node.ID) {
+// UniqueNodeIDs returns a slice of all UNIQUE node IDs for the given keys.
+func (k Keys) UniqueNodeIDs() (ids []node.ID) {
 	for _, key := range k {
 		if !filter.ElementOf(ids, key.NodeID()) {
 			ids = append(ids, key.NodeID())
@@ -91,6 +105,7 @@ func (k Keys) Nodes() (ids []node.ID) {
 	return ids
 }
 
+// Strings returns the keys as a slice of strings.
 func (k Keys) Strings() []string {
 	s := make([]string, len(k))
 	for i, key := range k {
@@ -99,9 +114,30 @@ func (k Keys) Strings() []string {
 	return s
 }
 
+// Channel is a collection is a container representing a collection of samples across
+// a time range. The data within a channel typically arrives from a single source. This
+// can be a physical sensor, software sensor, metric, event, or any other entity that
+// emits regular, consistent, and time-ordered values.
+//
+// This Channel type (for the distribution layer) extends a cesium.DB's channel via
+// composition to add fields necessary for cluster wide distribution.
+//
+// A Channel "belongs to" a specific Node. Because delta is oriented towards data collection
+// close to the hardware, it's natural to assume a sensor writes to one and only device.
+// For example, we may have a temperature sensor for a carbon fiber oven connected to a
+// Linux box. The temperature sensor is a Channel that writes to Node residing on the
+// Linux box.
+//
+// Data for a channel can only be written through the leaseholder. This helps solve a lot
+// of consistency and atomicity issues.
 type Channel struct {
-	Name   string
+	// Name is a human-readable name for the channel. This name does not have to be
+	// unique.
+	Name string
+	// NodeID is the leaseholder node for the channel.
 	NodeID node.ID
+	// Cesium are properties of the channel necessary for cesium to perform
+	// operations on it. See the cesium.Channel docs for mroe info on this.
 	Cesium cesium.Channel
 }
 

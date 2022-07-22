@@ -90,7 +90,7 @@ var _ = Describe("Create", Ordered, func() {
 			})
 			It("Should not create the channel on another node's ceisum gorpDB", func() {
 				channels, err := builder.Stores[1].Cesium.RetrieveChannel(ch.Key().Cesium())
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).To(HaveOccurred())
 				Expect(channels).To(HaveLen(0))
 			})
 			It("Should assign a sequential key to the channels on each node",
@@ -106,6 +106,5 @@ var _ = Describe("Create", Ordered, func() {
 					Expect(ch2.Key().Cesium()).To(Equal(cesium.ChannelKey(3)))
 				})
 		})
-
 	})
 })

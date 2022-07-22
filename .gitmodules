@@ -1,9 +1,0 @@
-[submodule "x"]
-	path = x
-	url = https://github.com/arya-analytics/x
-[submodule "cesium"]
-	path = cesium
-	url = https://github.com/arya-analytics/cesium
-[submodule "aspen"]
-	path = aspen
-	url = https://github.com/arya-analytics/aspen

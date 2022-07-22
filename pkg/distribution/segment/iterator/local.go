@@ -36,7 +36,7 @@ func newLocalIterator(
 
 	// translator translates cesium res from the iterator source into
 	// res transportable over the network.
-	ts := newCesiumResponseTranslator(keys.CesiumMap())
+	ts := newCesiumResponseTranslator(host)
 	plumber.SetSegment[cesium.RetrieveResponse, Response](pipe, "translator", ts)
 
 	c := errutil.NewCatchSimple()
@@ -90,9 +90,9 @@ type cesiumResponseTranslator struct {
 }
 
 func newCesiumResponseTranslator(
-	keyMap map[cesium.ChannelKey]channel.Key,
+	host node.ID,
 ) confluence.Segment[cesium.RetrieveResponse, Response] {
-	wrapper := &core.CesiumWrapper{KeyMap: keyMap}
+	wrapper := &core.CesiumWrapper{Host: host}
 	ts := &cesiumResponseTranslator{wrapper: wrapper}
 	ts.LinearTransform.ApplyTransform = ts.translate
 	return ts

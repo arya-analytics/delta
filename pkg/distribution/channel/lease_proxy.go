@@ -93,13 +93,14 @@ func (lp *leaseProxy) maybeSetResources(
 	if lp.resources != nil {
 		w := lp.resources.NewWriter(txn)
 		for _, channel := range channels {
-			rtk := ResourceTypeKey(channel.Key())
+			rtk := OntologyID(channel.Key())
 			if err := w.DefineResource(rtk); err != nil {
 				return err
 			}
 			if err := w.DefineRelationship(
-				node.ResourceKey(channel.NodeID),
+				node.OntologyID(channel.NodeID),
 				rtk,
+				ontology.Parent,
 			); err != nil {
 				return err
 			}

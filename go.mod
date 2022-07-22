@@ -20,9 +20,9 @@ require (
 )
 
 replace (
-	github.com/arya-analytics/aspen => ./aspen
-	github.com/arya-analytics/cesium => ./cesium
-	github.com/arya-analytics/x => ./x
+	github.com/arya-analytics/aspen => ../aspen
+	github.com/arya-analytics/cesium => ../cesium
+	github.com/arya-analytics/x => ../x
 )
 
 require (

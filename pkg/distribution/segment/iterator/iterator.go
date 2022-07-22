@@ -143,7 +143,7 @@ func New(
 
 	// The synchronizer checks that all nodes have acknowledged an iteration
 	// request. This is used to return ok = true from the iterator methods.
-	sync := &synchronizer{nodeIDs: keys.Nodes(), timeout: 2 * time.Second}
+	sync := &synchronizer{nodeIDs: keys.UniqueNodeIDs(), timeout: 2 * time.Second}
 
 	// Open a ackFilter that will route acknowledgement responses to the iterator
 	// synchronizer. We expect an ack from each remote iterator as well as the
