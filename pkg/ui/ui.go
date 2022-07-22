@@ -1,4 +1,4 @@
-package ui
+package main
 
 import (
 	"embed"
@@ -7,7 +7,7 @@ import (
 	"net/http"
 )
 
-//go:embed dist/*
+//go:embed dist/* dist/_app/immutable/assets/* dist/_app/immutable/pages/* dist/_app/immutable/chunks/*
 var dist embed.FS
 
 type Service struct{}
@@ -18,4 +18,11 @@ func (s *Service) BindTo(f fiber.Router) {
 		PathPrefix: "dist",
 		Browse:     true,
 	}))
+}
+
+func main() {
+	app := fiber.New()
+	s := &Service{}
+	s.BindTo(app)
+	app.Listen(":3000")
 }
