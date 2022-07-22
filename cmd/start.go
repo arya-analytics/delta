@@ -46,6 +46,10 @@ to quickly create a Cobra application.`,
 		sigC := make(chan os.Signal, 1)
 		signal.Notify(sigC, os.Interrupt)
 
+		// any data store on the node is considered sensitive, so we need to set the
+		// permission mask for all files appropriately.
+		disablePermissionBits()
+
 		ctx, cancel := xsignal.WithCancel(cmd.Context())
 		defer cancel()
 
@@ -110,13 +114,13 @@ to quickly create a Cobra application.`,
 			channelDistributionSvc := channel.New(
 				aspenDB,
 				gorpDB,
-				store.Cesium,
+				store.TS,
 				channeltransport.New(rpcServer, rpcPool),
 			)
 
 			segmentDistributionSvc := segment.New(
 				channelDistributionSvc,
-				store.Cesium,
+				store.TS,
 				segmenttransport.New(rpcServer, rpcPool),
 				aspenDB,
 			)
@@ -240,7 +244,7 @@ func configureCmux(
 
 func joinCluster(
 	ctx context.Context,
-	storage storage.Storage,
+	storage storage.Store,
 	exp alamos.Experiment,
 	logger *zap.Logger,
 	pool *grpcx.Pool,

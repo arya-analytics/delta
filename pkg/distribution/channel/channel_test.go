@@ -19,7 +19,7 @@ var _ = Describe("Channel", func() {
 				Expect(key.NodeID()).To(Equal(aspen.NodeID(1)))
 			})
 		})
-		Describe("Cesium", func() {
+		Describe("TS", func() {
 			It("Should return the correct cesium key for the channel", func() {
 				Expect(key.Cesium()).To(Equal(cesium.ChannelKey(2)))
 			})
